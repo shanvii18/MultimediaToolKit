@@ -1,0 +1,63 @@
+services:
+  # MultimediaToolKit - FastAPI Backend Web Service
+  - type: web
+    name: mtk-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        value: 8000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mtk-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: mtk-redis
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: STORAGE_DIR
+        value: /var/data/storage
+    disk:
+      name: mtk-storage
+      mountPath: /var/data/storage
+      sizeGB: 1
+
+  # MultimediaToolKit - Asynchronous Processing Worker
+  - type: worker
+    name: mtk-worker
+    env: docker
+    dockerfilePath: worker/Dockerfile
+    dockerContext: worker
+    plan: starter
+    region: oregon
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mtk-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: mtk-redis
+          property: connectionString
+      - key: POLL_INTERVAL_SECONDS
+        value: "2"
+
+databases:
+  # Persistent PostgreSQL Database
+  - name: mtk-postgres
+    plan: free
+    region: oregon
+    databaseName: multimediatoolkit
+    user: postgres
