@@ -1,5 +1,6 @@
 services:
   # MultimediaToolKit - FastAPI Backend Web Service
+  # Free tier web service with ephemeral storage & in-process async task handling
   - type: web
     name: mtk-backend
     env: docker
@@ -17,45 +18,13 @@ services:
         fromDatabase:
           name: mtk-postgres
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: mtk-redis
-          property: connectionString
       - key: ALLOWED_ORIGINS
         value: "*"
       - key: STORAGE_DIR
-        value: /var/data/storage
-    disk:
-      name: mtk-storage
-      mountPath: /var/data/storage
-      sizeGB: 1
-
-  # MultimediaToolKit - Asynchronous Processing Worker
-  - type: worker
-    name: mtk-worker
-    env: docker
-    dockerfilePath: worker/Dockerfile
-    dockerContext: worker
-    plan: starter
-    region: oregon
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: mtk-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: mtk-redis
-          property: connectionString
-      - key: POLL_INTERVAL_SECONDS
-        value: "2"
+        value: /tmp/storage
 
 databases:
-  # Persistent PostgreSQL Database
+  # Render Free PostgreSQL (Available for 30-day prototype evaluation)
   - name: mtk-postgres
     plan: free
     region: oregon
