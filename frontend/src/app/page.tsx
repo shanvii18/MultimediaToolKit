@@ -92,7 +92,7 @@ export default function DashboardPage() {
           {operationalModules.map((module) => (
             <Link
               key={module.id}
-              href={`/workspace?tool=${module.slug}`}
+              href={module.route || `/workspace?tool=${module.slug}`}
               className="group p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-orange-500/40 hover:bg-slate-800/60 transition-all duration-200 flex flex-col justify-between"
             >
               <div className="space-y-3">
@@ -108,7 +108,13 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{module.description}</p>
               </div>
               <div className="pt-4 flex items-center text-xs text-orange-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                <span>Launch workspace</span>
+                <span>
+                  {module.slug === "project-workspace-media-library"
+                    ? "Open Projects"
+                    : module.slug === "job-monitor-export-center"
+                    ? "Open Monitor"
+                    : "Launch Studio"}
+                </span>
                 <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </div>
             </Link>

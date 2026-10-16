@@ -17,6 +17,11 @@ export interface ToolkitModule {
   statusLabel: string;
   iconName: string;
   supportedFormats?: string[];
+  route?: string;
+  blueprintRole?: string;
+  targetEndpoint?: string;
+  workerEngine?: string;
+  executionTier?: string;
 }
 
 export interface Project {

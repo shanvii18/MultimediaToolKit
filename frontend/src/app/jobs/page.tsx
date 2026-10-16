@@ -95,7 +95,12 @@ export default function JobsPage() {
                       {job.id.slice(0, 10)}...
                     </td>
                     <td className="py-3.5 px-4 font-semibold text-white">
-                      {job.tool}
+                      <div>{job.tool}</div>
+                      {job.status === "failed" && job.error_message && (
+                        <div className="text-[10px] text-rose-400 font-normal truncate max-w-xs" title={job.error_message}>
+                          {job.error_message}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3.5 px-4">
                       <span

@@ -60,3 +60,6 @@ data/
 storage/
 *.db
 *.log
+
+backend/*.db-shm
+backend/*.db-wal

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Search, Filter, ArrowUpRight, CheckCircle2, Clock, Sparkles } from "lucide-react";
-import { TOOLKIT_MODULES } from "@/services/modulesCatalog";
+import { TOOLKIT_MODULES, getModuleRoute } from "@/services/modulesCatalog";
 import { ModuleGroup } from "@/types";
 
 export default function ModulesDirectoryPage() {
@@ -105,10 +105,18 @@ export default function ModulesDirectoryPage() {
             <div className="pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
               <span className="text-[11px] text-slate-500 font-medium">{mod.group}</span>
               <Link
-                href={`/workspace?tool=${mod.slug}`}
+                href={getModuleRoute(mod)}
                 className="inline-flex items-center gap-1 text-orange-400 hover:text-orange-300 font-medium"
               >
-                <span>Launch</span>
+                <span>
+                  {mod.status === "operational"
+                    ? mod.slug === "project-workspace-media-library"
+                      ? "Open Projects"
+                      : mod.slug === "job-monitor-export-center"
+                      ? "Open Monitor"
+                      : "Launch Studio"
+                    : "Roadmap Specs"}
+                </span>
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </div>

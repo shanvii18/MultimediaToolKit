@@ -11,7 +11,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Utility",
     iconName: "FileText",
-    supportedFormats: [".pdf", ".docx", ".txt"]
+    supportedFormats: [".pdf", ".docx", ".txt"],
+    route: "/modules/document-pdf-studio",
+    blueprintRole: "Conversion & Utilities (Slide 6)",
+    targetEndpoint: "/api/v1/documents/process",
+    workerEngine: "PyPDF2 / PDFMiner Microservice",
+    executionTier: "Free Tier CPU Worker"
   },
   {
     id: "02",
@@ -22,7 +27,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Utility",
     iconName: "Image",
-    supportedFormats: [".png", ".jpg", ".webp", ".svg"]
+    supportedFormats: [".png", ".jpg", ".webp", ".svg", ".bmp"],
+    route: "/modules/image-converter",
+    blueprintRole: "Conversion & Utilities (Slide 6)",
+    targetEndpoint: "/api/v1/images/convert",
+    workerEngine: "Pillow (PIL) Image Pipeline",
+    executionTier: "Free Tier CPU Worker"
   },
   {
     id: "03",
@@ -33,7 +43,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Utility",
     iconName: "Music",
-    supportedFormats: [".mp3", ".wav", ".aac", ".flac", ".ogg"]
+    supportedFormats: [".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a"],
+    route: "/modules/audio-converter",
+    blueprintRole: "Conversion & Utilities (Slide 6)",
+    targetEndpoint: "/api/v1/audio/convert",
+    workerEngine: "FFmpeg Audio Transcoding Engine",
+    executionTier: "Container Native FFmpeg"
   },
   {
     id: "04",
@@ -44,7 +59,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Utility",
     iconName: "Video",
-    supportedFormats: [".mp4", ".mov", ".mkv", ".webm"]
+    supportedFormats: [".mp4", ".mov", ".mkv", ".webm", ".avi"],
+    route: "/modules/video-converter",
+    blueprintRole: "Conversion & Utilities (Slide 6)",
+    targetEndpoint: "/api/v1/video/transcode",
+    workerEngine: "FFmpeg H.264/H.265 Transcoding Engine",
+    executionTier: "Container Native FFmpeg"
   },
   {
     id: "05",
@@ -55,7 +75,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Utility",
     iconName: "ScanText",
-    supportedFormats: [".png", ".jpg", ".pdf"]
+    supportedFormats: [".png", ".jpg", ".pdf"],
+    route: "/modules/ocr-text-extraction",
+    blueprintRole: "Conversion & Utilities (Slide 6)",
+    targetEndpoint: "/api/v1/ocr/extract",
+    workerEngine: "Tesseract OCR / EasyOCR Runtime",
+    executionTier: "Free Tier CPU Worker"
   },
   {
     id: "06",
@@ -66,7 +91,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "operational",
     statusLabel: "Operational (P1 Core)",
     iconName: "FileSpreadsheet",
-    supportedFormats: [".mp4", ".mov", ".avi", ".mkv"]
+    supportedFormats: [".mp4", ".mov", ".avi", ".mkv", ".webm"],
+    route: "/workspace?tool=media-extractor",
+    blueprintRole: "Conversion & Utilities — Core Extractor (Slide 6 & 8)",
+    targetEndpoint: "/api/v1/jobs (tool: video_to_audio)",
+    workerEngine: "FFmpeg Audio Extraction Adapter",
+    executionTier: "Native FFmpeg Active"
   },
 
   // Group 2 — Audio, Video & Media Understanding (07-10)
@@ -76,10 +106,15 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     name: "Speech-to-Text",
     group: "Audio, Video & Media Understanding",
     description: "Transcribe audio/video speech with accurate timestamps and multi-language support.",
-    status: "operational",
-    statusLabel: "Operational (P1 Core)",
+    status: "roadmap",
+    statusLabel: "Provider Roadmap",
     iconName: "Mic",
-    supportedFormats: [".mp3", ".wav", ".m4a", ".mp4"]
+    supportedFormats: [".mp3", ".wav", ".m4a", ".mp4"],
+    route: "/modules/speech-to-text",
+    blueprintRole: "Media Understanding — Transcription (Slide 7 & 8)",
+    targetEndpoint: "/api/v1/jobs (tool: speech_to_text)",
+    workerEngine: "OpenAI Whisper / Whisper.cpp Adapter",
+    executionTier: "Worker Background Runtime"
   },
   {
     id: "08",
@@ -90,7 +125,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Pipeline",
     iconName: "Subtitles",
-    supportedFormats: [".mp3", ".mp4", ".srt", ".vtt"]
+    supportedFormats: [".mp3", ".mp4", ".srt", ".vtt"],
+    route: "/modules/subtitle-caption-generator",
+    blueprintRole: "Media Understanding (Slide 7)",
+    targetEndpoint: "/api/v1/subtitles/generate",
+    workerEngine: "Whisper Timing Synthesizer",
+    executionTier: "Worker Background Runtime"
   },
   {
     id: "09",
@@ -101,7 +141,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "roadmap",
     statusLabel: "Provider Roadmap",
     iconName: "BrainCircuit",
-    supportedFormats: [".png", ".jpg", ".mp4"]
+    supportedFormats: [".png", ".jpg", ".mp4"],
+    route: "/modules/ai-media-understanding",
+    blueprintRole: "Media Understanding — Vision LLM (Slide 7)",
+    targetEndpoint: "/api/v1/understand/vision",
+    workerEngine: "Multimodal Vision Model Adapter (OpenAI / Claude / Gemini)",
+    executionTier: "Cloud API Provider"
   },
   {
     id: "10",
@@ -112,7 +157,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "roadmap",
     statusLabel: "Roadmap Stage",
     iconName: "Film",
-    supportedFormats: [".mp4", ".mov"]
+    supportedFormats: [".mp4", ".mov"],
+    route: "/modules/video-summarizer-storyboard",
+    blueprintRole: "Media Understanding (Slide 7)",
+    targetEndpoint: "/api/v1/video/summarize",
+    workerEngine: "SceneDetect + Keyframe Extractor + Vision LLM",
+    executionTier: "Worker Background Runtime"
   },
 
   // Group 3 — Generative AI Creative Studio (11-16)
@@ -125,7 +175,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Provider Adapter",
     iconName: "Sparkles",
-    supportedFormats: []
+    supportedFormats: [".png", ".jpg", ".webp"],
+    route: "/modules/text-to-image",
+    blueprintRole: "Generative Creative Studio (Slide 7)",
+    targetEndpoint: "/api/v1/generate/image",
+    workerEngine: "Stable Diffusion XL / SD-Turbo Adapter",
+    executionTier: "Cloud GPU Worker"
   },
   {
     id: "12",
@@ -136,7 +191,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "roadmap",
     statusLabel: "Cloud Roadmap",
     iconName: "Clapperboard",
-    supportedFormats: []
+    supportedFormats: [".mp4"],
+    route: "/modules/text-to-video",
+    blueprintRole: "Generative Creative Studio (Slide 7)",
+    targetEndpoint: "/api/v1/generate/video",
+    workerEngine: "CogVideoX / Runway Gen-3 Cloud Adapter",
+    executionTier: "Cloud GPU Infrastructure"
   },
   {
     id: "13",
@@ -147,7 +207,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "roadmap",
     statusLabel: "Cloud Roadmap",
     iconName: "PlayCircle",
-    supportedFormats: [".png", ".jpg"]
+    supportedFormats: [".png", ".jpg", ".mp4"],
+    route: "/modules/image-to-video",
+    blueprintRole: "Generative Creative Studio (Slide 7)",
+    targetEndpoint: "/api/v1/animate/image",
+    workerEngine: "Stable Video Diffusion (SVD) Adapter",
+    executionTier: "Cloud GPU Infrastructure"
   },
   {
     id: "14",
@@ -158,7 +223,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "roadmap",
     statusLabel: "Advanced Roadmap",
     iconName: "Palette",
-    supportedFormats: [".mp4"]
+    supportedFormats: [".mp4"],
+    route: "/modules/video-to-animation",
+    blueprintRole: "Generative Creative Studio (Slide 7)",
+    targetEndpoint: "/api/v1/restyle/video",
+    workerEngine: "ControlNet / AnimateDiff Pipeline",
+    executionTier: "Cloud GPU Infrastructure"
   },
   {
     id: "15",
@@ -169,7 +239,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Engine",
     iconName: "Volume2",
-    supportedFormats: []
+    supportedFormats: [".mp3", ".wav"],
+    route: "/modules/voice-text-to-speech",
+    blueprintRole: "Generative Creative Studio (Slide 7)",
+    targetEndpoint: "/api/v1/speech/synthesize",
+    workerEngine: "Edge-TTS / Coqui TTS Adapter",
+    executionTier: "Free Tier CPU Worker"
   },
   {
     id: "16",
@@ -180,7 +255,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Integrated Studio",
     iconName: "Layers",
-    supportedFormats: [".png", ".jpg"]
+    supportedFormats: [".png", ".jpg"],
+    route: "/modules/thumbnail-creative-assets",
+    blueprintRole: "Generative Creative Studio (Slide 7)",
+    targetEndpoint: "/api/v1/generate/thumbnail",
+    workerEngine: "Canvas Compositor + Generative Infill",
+    executionTier: "Free Tier CPU Worker"
   },
 
   // Group 4 — Idea-to-Content Workflow (17-18)
@@ -189,11 +269,16 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     slug: "idea-to-storyboard",
     name: "Idea-to-Storyboard Studio",
     group: "Idea-to-Content Workflow",
-    description: "Transform raw ideas or voice memos into multi-scene cinematic storyboards with camera cues.",
+    description: "Transform raw ideas or briefs into multi-scene cinematic storyboards with camera cues.",
     status: "operational",
     statusLabel: "Operational (P2 Demo)",
     iconName: "Wand2",
-    supportedFormats: [".txt", ".json"]
+    supportedFormats: [".txt", ".json"],
+    route: "/workspace?tool=idea-to-storyboard",
+    blueprintRole: "Idea-to-Content Workflow (Slide 8)",
+    targetEndpoint: "/api/v1/jobs (tool: idea_to_storyboard)",
+    workerEngine: "Contextual Directorial Heuristic Engine v2",
+    executionTier: "Native Backend Active"
   },
   {
     id: "18",
@@ -204,7 +289,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "integrated",
     statusLabel: "Workflow Orchestrator",
     iconName: "Workflow",
-    supportedFormats: []
+    supportedFormats: [".json"],
+    route: "/modules/multistep-creation-pipeline",
+    blueprintRole: "Idea-to-Content Workflow (Slide 8)",
+    targetEndpoint: "/api/v1/pipelines/execute",
+    workerEngine: "DAG Workflow Orchestrator Runtime",
+    executionTier: "Worker Background Runtime"
   },
 
   // Group 5 — Workspace & Delivery (19-20)
@@ -217,7 +307,12 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "operational",
     statusLabel: "Operational (P0 Foundation)",
     iconName: "FolderKanban",
-    supportedFormats: ["*"]
+    supportedFormats: ["*"],
+    route: "/projects",
+    blueprintRole: "Workspace & Delivery (Slide 9)",
+    targetEndpoint: "/api/v1/projects & /api/v1/assets",
+    workerEngine: "PostgreSQL / SQLite Storage Engine",
+    executionTier: "Database Service Active"
   },
   {
     id: "20",
@@ -228,6 +323,26 @@ export const TOOLKIT_MODULES: ToolkitModule[] = [
     status: "operational",
     statusLabel: "Operational (P0 Foundation)",
     iconName: "Activity",
-    supportedFormats: ["*"]
+    supportedFormats: ["*"],
+    route: "/jobs",
+    blueprintRole: "Workspace & Delivery (Slide 9)",
+    targetEndpoint: "/api/v1/jobs & /api/v1/assets/{id}/download",
+    workerEngine: "Background Task Queue & File Delivery",
+    executionTier: "Background Task Engine Active"
   }
 ];
+
+export function getModuleRoute(module: ToolkitModule): string {
+  if (module.route) return module.route;
+  if (module.status === "operational") {
+    if (module.slug === "media-extractor") return "/workspace?tool=media-extractor";
+    if (module.slug === "idea-to-storyboard") return "/workspace?tool=idea-to-storyboard";
+    if (module.slug === "project-workspace-media-library") return "/projects";
+    if (module.slug === "job-monitor-export-center") return "/jobs";
+  }
+  return `/modules/${module.slug}`;
+}
+
+export function getModuleBySlug(slug: string): ToolkitModule | undefined {
+  return TOOLKIT_MODULES.find((m) => m.slug === slug);
+}

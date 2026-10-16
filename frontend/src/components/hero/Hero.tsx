@@ -165,7 +165,7 @@ export function Hero({ onOpenUpload }: HeroProps) {
               {/* Video Preview thumbnail with geometric diamond overlay (Screenshot 1) */}
               <div className="relative rounded-lg overflow-hidden bg-slate-950 aspect-[16/9] flex items-center justify-center">
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 opacity-90" />
-                
+
                 {/* Geometrical Rotated Diamond Frame */}
                 <div className="absolute w-20 h-20 border border-stripe-coral/40 rotate-45 pointer-events-none" />
                 <div className="absolute w-24 h-24 border border-stripe-amber/30 rotate-12 pointer-events-none" />
@@ -214,7 +214,9 @@ export function Hero({ onOpenUpload }: HeroProps) {
               </div>
 
               <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                <span>"...the signal"</span>
+
+                <span>&quot;...the signal&quot;</span>
+
                 <span className="text-stripe-orange font-semibold">00:14 - 18:42</span>
               </div>
             </div>

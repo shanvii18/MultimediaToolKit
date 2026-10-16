@@ -116,7 +116,7 @@ export function FeatureHighlights() {
               {activeTab === "arch" && (
                 <div className="space-y-4 animate-fade-in text-xs font-mono">
                   <div className="p-4 rounded-xl bg-slate-950 text-slate-200 space-y-2 border border-slate-800">
-                    <div className="text-slate-400">// Docker Compose Network Topology: mtk-network</div>
+                    <div className="text-slate-400">{"// Docker Compose Network Topology: mtk-network"}</div>
                     <div className="text-stripe-orange">frontend:3000   → Next.js 14 App Router + Tailwind</div>
                     <div className="text-stripe-coral">backend:8000    → FastAPI Core REST API (/health)</div>
                     <div className="text-stripe-pink">worker          → Python Celery/Redis Consumer Loop</div>

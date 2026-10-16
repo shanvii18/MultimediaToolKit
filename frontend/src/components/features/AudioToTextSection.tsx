@@ -139,7 +139,7 @@ export function AudioToTextSection() {
                     ➔
                   </div>
                   <div className="flex-1 font-mono text-xs text-stripe-coral font-medium tracking-wide truncate">
-                    "When we compute principal components..."
+                    &ldquo;When we compute principal components...&rdquo;
                   </div>
                 </div>
               </div>
