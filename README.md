@@ -1,136 +1,126 @@
 # MultimediaToolKit
 
-> **AI-First Multimedia Transformation Platform**  
-> Direct implementation aligned with the authoritative specification: `MultimediaToolKit_Complete_Project_Blueprint.pptx`.
+Convert anything into anything: **5 formats (Text, Image, Audio, Video, Animation) and 20 directed conversions**. Each one does a real operation and produces a real downloadable file.
+
+- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind, dark and light mode, responsive
+- **Backend:** FastAPI, SQLAlchemy 2, Alembic, PostgreSQL (SQLite for local dev), a durable DB-backed job queue (optional Redis wake-ups), and S3-compatible storage
+- **Engines:** FFmpeg, faster-whisper, Kokoro-82M TTS, Tesseract OCR and Pillow, all on CPU. An optional hosted AI provider (Cloudflare Workers AI or Hugging Face) handles generative image models and image description.
 
 ---
 
-## 1. Product Vision & Architecture
+## The 20 conversions
 
-MultimediaToolKit bridges the gap between fragmented single-purpose utilities by establishing a unified multimodal pipeline:
+Each conversion has at least one **CPU mode that always works**. *AI modes* need an AI provider to be configured (see [AI provider](#ai-provider-optional)). Without one they say so and are never faked.
 
-$$\text{IDEA} \longrightarrow \text{UNDERSTAND} \longrightarrow \text{CREATE} \longrightarrow \text{POLISH} \longrightarrow \text{DELIVER}$$
-
-Traditional media operations (audio extraction, OCR, format transcoding) serve as foundational utilities supporting generative AI asset synthesis, storyboard breakdowns, and asynchronous job monitoring.
-
-```
-┌────────────────────────────────────────────────────────┐
-│               Frontend (Next.js 14 App Router)         │
-│   • Dashboard      • Creation Studio   • 20 Modules    │
-│   • Workspaces     • Media Library     • Job Monitor   │
-└───────────────────────────┬────────────────────────────┘
-                            │ REST / HTTPS
-┌───────────────────────────▼────────────────────────────┐
-│                    FastAPI Backend                     │
-│   • /api/v1/projects  • /api/v1/media  • /api/v1/jobs  │
-│   • Modular Routers   • Storage Svc    • Pydantic v2   │
-└───────────────┬──────────────────────────┬─────────────┘
-                │                          │
-┌───────────────▼─────────────┐ ┌──────────▼─────────────┐
-│  Database (SQLAlchemy)      │ │  Worker & Adapters     │
-│  Users, Projects, Assets,   │ │  • FFmpeg Audio Engine │
-│  Jobs, Outputs, Events      │ │  • Storyboard Engine   │
-└─────────────────────────────┘ └────────────────────────┘
-```
-
----
-
-## 2. Complete 20-Module Blueprint Directory
-
-| ID | Module Name | Group | Implementation Status |
+| # | Conversion | CPU modes | AI modes (provider) |
 |---|---|---|---|
-| **01** | Document & PDF Studio | Conversion & Utilities | Integrated Utility |
-| **02** | Image Converter | Conversion & Utilities | Integrated Utility |
-| **03** | Audio Converter | Conversion & Utilities | Integrated Utility |
-| **04** | Video Converter | Conversion & Utilities | Integrated Utility |
-| **05** | OCR & Text Extraction | Conversion & Utilities | Integrated Utility |
-| **06** | Media Extractor | Conversion & Utilities | **Operational (P1 Core)** |
-| **07** | Speech-to-Text | Audio, Video & Media Understanding | **Operational (P1 Core)** |
-| **08** | Subtitle & Caption Generator | Audio, Video & Media Understanding | Integrated Pipeline |
-| **09** | AI Media Understanding | Audio, Video & Media Understanding | Provider Roadmap |
-| **10** | Video Summarizer & Storyboard | Audio, Video & Media Understanding | Roadmap Stage |
-| **11** | Text-to-Image | Generative AI Creative Studio | Integrated Adapter |
-| **12** | Text-to-Video | Generative AI Creative Studio | Cloud Roadmap |
-| **13** | Image-to-Video / Animation | Generative AI Creative Studio | Cloud Roadmap |
-| **14** | Video-to-Animation / Restyling | Generative AI Creative Studio | Advanced Roadmap |
-| **15** | Voice & Text-to-Speech | Generative AI Creative Studio | Integrated Engine |
-| **16** | Thumbnail & Creative Assets | Generative AI Creative Studio | Integrated Studio |
-| **17** | Idea-to-Storyboard Studio | Idea-to-Content Workflow | **Operational (P2 Demo)** |
-| **18** | Multi-Step Creation Pipeline | Idea-to-Content Workflow | Workflow Orchestrator |
-| **19** | Project Workspace & Media Library | Workspace & Delivery | **Operational (P0 Foundation)** |
-| **20** | Job Monitor & Export Center | Workspace & Delivery | **Operational (P0 Foundation)** |
+| 1 | Text → Audio | Kokoro neural TTS (9 voices, MP3/WAV/OGG/FLAC/M4A) | n/a |
+| 2 | Audio → Text | Whisper transcript as TXT/SRT/VTT/JSON | n/a |
+| 3 | Video → Text | FFmpeg + Whisper | n/a |
+| 4 | Video → Audio | FFmpeg extraction (5 formats) | n/a |
+| 5 | Animation → Text | On-screen text (Tesseract) + speech (Whisper) | Describe visuals |
+| 6 | Animation → Audio | Extract soundtrack · read on-screen text aloud | Narrate visuals |
+| 7 | Text → Image | Typography poster | AI image (FLUX.1-schnell) |
+| 8 | Text → Video | Narrated scene video (cards + Kokoro + Ken Burns + captions) | AI-illustrated scenes |
+| 9 | Text → Animation | Kinetic typography GIF/WebP | AI image loop |
+| 10 | Audio → Image | Waveform art · spectrogram | AI cover art (speech + mood → prompt) |
+| 11 | Audio → Video | Waves / spectrum / bars visualiser + Whisper captions | Visualiser on AI art |
+| 12 | Audio → Animation | Waveform loop · beat pulse | AI art pulse |
+| 13 | Image → Text | OCR (Tesseract) | Describe image |
+| 14 | Image → Audio | Read text aloud (OCR → TTS) | Describe in speech |
+| 15 | Image → Video | Ken Burns camera motion | AI-narrated video |
+| 16 | Image → Animation | Seamless motion loop | n/a |
+| 17 | Video → Image | Frame picker + edits · best frame · poster | AI poster |
+| 18 | Video → Animation | Palette GIF/WebP, effects (cartoon, vintage, B&W), boomerang | n/a |
+| 19 | Animation → Image | Best frame · poster · contact sheet | n/a |
+| 20 | Animation → Video | MP4/WebM, loops, motion smoothing | n/a |
 
----
+The live status of every conversion and mode on a given server is available at `GET /api/v1/conversions`. If an engine is missing (for example Tesseract), the UI shows **"Engine not installed"** and the API refuses the job with 503.
 
-## 3. Repository Structure
+## Features
+- **Conversion workspace** (`/convert/[id]`), generated from the backend registry: drag-and-drop upload, local preview (scrub a video to pick a frame), mode and settings forms, live progress with step messages, and audio, image and text previews with downloads.
+- **Conversion history** (`/jobs`) with filters, errors and all output files. **Projects and media library** (`/projects`) with search, type filter, previews and delete.
+- **Invite-only accounts:** personal access keys (hashed), per-user data isolation, short-lived signed download links, `/login`.
+- **Reliability:** durable job queue with leases, heartbeats and automatic recovery; FFmpeg timeouts; honest error codes (`NO_SPEECH`, `NO_AUDIO`, `INPUT_TOO_LONG`, `AI_PROVIDER_ERROR`, …); failed jobs leave no partial files behind.
+- **Security:** server-derived MIME types, `nosniff` and sandbox CSP on downloads, upload allow-list and size cap, path-traversal-safe storage keys, and refusal to start in production with an unsafe configuration.
 
+## Architecture
 ```text
-MultimediaToolKit/
-├── frontend/                 # Next.js 14, TypeScript, Tailwind CSS
-│   ├── src/
-│   │   ├── app/              # App Router: /, /workspace, /modules, /projects, /jobs
-│   │   ├── components/       # Reusable SaaS Shell, Modals, Workspaces
-│   │   ├── services/         # Typed API Client, 20-Module Catalog
-│   │   └── types/            # Data contract definitions
-│   └── package.json
-├── backend/                  # FastAPI Modular Service
-│   ├── app/
-│   │   ├── api/v1/           # Versioned REST endpoints
-│   │   ├── core/             # Configuration, Database engine, Logging
-│   │   ├── models/           # SQLAlchemy ORM entities
-│   │   ├── schemas/          # Pydantic validation schemas
-│   │   ├── services/         # Business logic: StorageService, JobRunnerService
-│   │   ├── adapters/         # FFmpeg adapter, Storyboard generator
-│   │   └── tests/            # Automated test suite (Pytest)
-│   ├── requirements.txt
-│   └── Dockerfile
-├── worker/                   # Background processing queue runtime
-├── docker-compose.yml        # Orchestration (Postgres, Redis, Backend, Worker, Frontend)
-├── .env.example
-├── .gitignore
-└── README.md
+Next.js (Vercel)  ──HTTPS + Bearer key──►  FastAPI API ──► PostgreSQL (jobs = durable queue, Alembic)
+                                              │  ▲                 ▲
+                                              ▼  │ signed URLs     │ claim / heartbeat / recover
+                                     S3-compatible storage   Worker (embedded thread or `python -m app.worker`)
+                                     (local disk in dev)        └─ registry → pipelines → adapters:
+                                                                   FFmpeg · Whisper · Kokoro · Tesseract ·
+                                                                   Pillow graphics/motion · AI provider (opt.)
 ```
+Code map: `backend/app/engines/registry.py` (the 20 conversions), `backend/app/engines/pipelines/` (workflows), `backend/app/adapters/` (engines), `frontend/src/app/convert/` (workspace UI).
 
----
+## Local development
 
-## 4. Local Quickstart
-
-### Prerequisites
-- Node.js 18+
-- Python 3.11+
-- FFmpeg (optional on host; included in container runtime)
-
-### 1. Backend Service
+### Backend
 ```bash
 cd backend
-python -m venv .venv
-# On Windows: .venv\Scripts\activate | On Linux/macOS: source .venv/bin/activate
+python -m venv .venv && .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+# optional: keep model weights off the system drive
+echo MODEL_CACHE_DIR=D:/MultimediaToolKit/models > .env
+python -m app.cli download-models                      # Whisper tiny+base, Kokoro (~330 MB)
+uvicorn app.main:app --reload                           # http://localhost:8000/docs
 ```
-- Swagger API Docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/health`
+System tools: **FFmpeg** (required) and **Tesseract** (for OCR modes; Windows: `winget install UB-Mannheim.TesseractOCR`). Migrations run automatically at start-up (`alembic upgrade head` also works). In development, requests without a key act as a local developer user.
 
-### 2. Frontend Application
+### Frontend
 ```bash
 cd frontend
 npm install
-npm run dev
+set NEXT_PUBLIC_API_URL=http://localhost:8000            # macOS/Linux: export ...
+npm run dev                                              # http://localhost:3000
 ```
-- Web Application: `http://localhost:3000`
 
-### 3. Running Backend Tests
+### Docker (full stack)
+```bash
+docker compose up --build     # postgres, redis, backend (API), worker, frontend
+```
+
+### Tests
+```bash
+cd backend && pytest            # backend + workflow tests (real FFmpeg/Whisper/Kokoro; AI provider mocked)
+cd frontend && npx tsc --noEmit && npm run lint && npm run build
+```
+
+## Configuration
+All settings are environment variables; see [`.env.example`](.env.example). The important ones:
+
+| Variable | Purpose |
+|---|---|
+| `ENVIRONMENT` | `development` or `production` (production enforces access keys, PostgreSQL and a signing secret) |
+| `DATABASE_URL` | PostgreSQL URL (use a non-expiring one, for example Neon free tier) |
+| `SIGNING_SECRET` | ≥ 32 random characters, used for signed download links |
+| `ALLOWED_ORIGINS` | Your frontend origin(s) |
+| `STORAGE_BACKEND` | `local` or `s3` (+ `S3_BUCKET`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`) |
+| `MODEL_CACHE_DIR` | Where Whisper/Kokoro weights are stored |
+| `AI_PROVIDER` | `none` (default), `cloudflare` or `huggingface` |
+| `QUEUE_NOTIFY_REDIS` | `true` to wake workers instantly through Redis (`REDIS_URL`) |
+
+### AI provider (optional)
+- **Cloudflare Workers AI** (has a free daily allowance): `AI_PROVIDER=cloudflare`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (Workers AI permission). Models: `@cf/black-forest-labs/flux-1-schnell` (images), `@cf/llava-hf/llava-1.5-7b-hf` (description).
+- **Hugging Face Inference**: `AI_PROVIDER=huggingface`, `HF_API_TOKEN`. Models: `black-forest-labs/FLUX.1-schnell`, `Salesforce/blip-image-captioning-large`.
+
+AI usage counts against your provider account. Outputs are marked `ai_generated` in their metadata.
+
+### Invite users
 ```bash
 cd backend
-pytest app/tests
+python -m app.cli invite --email friend@example.com     # prints a one-time invite link
+python -m app.cli list-users
+python -m app.cli revoke --email friend@example.com
 ```
 
----
+## Deployment (free-first)
+- **Backend on Render** via [`render.yaml`](render.yaml). Set `DATABASE_URL` (Neon), `ALLOWED_ORIGINS`, `FRONTEND_URL`, and optionally the `S3_*` and `AI_PROVIDER` variables in the dashboard. Render Free has 512 MB RAM and sleeps after 15 minutes; Whisper defaults to `tiny` there.
+- **Frontend on Vercel**: root directory `frontend`, env `NEXT_PUBLIC_API_URL=https://<your-backend>`.
+- Render's free PostgreSQL is deleted after 30 days, so use a persistent database.
 
-## 5. Cloud Deployment Target
-
-The application is structured for turnkey containerized deployment to AWS (ECS Fargate + RDS PostgreSQL + ElastiCache Redis + S3), or alternatively managed deployment (Render / Railway / Vercel):
-- **Frontend:** Vercel or Container service
-- **API & Worker:** Container runtime with FFmpeg system packages
-- **Database:** Managed PostgreSQL (with local SQLite fallback active for zero-config startup)
-- **Object Storage:** Persistent volume or S3 bucket
+## Licences
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSE_AUDIT.md](LICENSE_AUDIT.md). All bundled engines and models are permissively licensed. Note: `phonemizer`/`espeak-ng` (used by Kokoro) are GPL-3.0, which is fine for hosting, but don't publish Docker images without reviewing LICENSE_AUDIT.md §4.1.
