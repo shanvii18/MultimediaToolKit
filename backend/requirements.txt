@@ -6,4 +6,18 @@ psycopg2-binary>=2.9.9,<3.0.0
 httpx>=0.27.0,<1.0.0
 sqlalchemy>=2.0.30,<3.0.0
 python-multipart>=0.0.9
+
+# Phase 1: storage, migrations
+alembic>=1.13,<2.0
+boto3>=1.35,<2.0
+
+# Phase 1: CPU conversion engines (all permissive licences; see THIRD_PARTY_NOTICES.md)
+faster-whisper>=1.1,<2.0        # speech-to-text (MIT)
+kokoro-onnx>=0.4,<1.0           # text-to-speech (MIT; Kokoro-82M weights Apache-2.0)
+pytesseract>=0.3.13,<0.4        # OCR wrapper (Apache-2.0); needs the tesseract binary
+Pillow>=10.4                    # image processing (MIT-CMU)
+numpy>=1.26
+
+# Development / tests
 pytest>=8.0.0
+moto[s3]>=5.0,<6.0              # in-process S3 fake for storage tests

@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Any, Dict
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, computed_field
+from app.core.security import sign_download_path
 
 
 # ---------------- Project Schemas ----------------
@@ -34,6 +35,12 @@ class AssetResponse(BaseModel):
     metadata_json: Dict[str, Any] = {}
     created_at: datetime
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def download_url(self) -> str:
+        """Short-lived signed path (relative to the API base) usable in <a>/<audio> tags."""
+        return sign_download_path(self.id)
+
 
 # ---------------- Job Schemas ----------------
 class JobCreate(BaseModel):
@@ -63,6 +70,7 @@ class JobResponse(BaseModel):
     tool: str
     status: str
     progress: int
+    progress_message: Optional[str] = None
     input_asset_ids: List[str] = []
     params_json: Dict[str, Any] = {}
     error_code: Optional[str] = None

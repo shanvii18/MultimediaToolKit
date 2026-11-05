@@ -1,6 +1,12 @@
 services:
-  # MultimediaToolKit - FastAPI Backend Web Service
-  # Free tier web service with ephemeral storage & in-process async task handling
+  # MultimediaToolKit - FastAPI Backend Web Service (Render Free, Tier A)
+  #
+  # Free-tier limitations (documented in PROJECT_STATUS.md):
+  #   - 512 MB RAM, shared CPU; sleeps after 15 min without traffic (~1 min cold start).
+  #   - No persistent disk: files in STORAGE_DIR are lost on restart/redeploy/sleep.
+  #     Lost files return 410 Gone (never a fake success). Durable object storage is planned.
+  #   - Jobs run in the embedded worker thread; they are stored in PostgreSQL, so a sleep or
+  #     restart pauses them and they are recovered automatically when the service wakes.
   - type: web
     name: mtk-backend
     env: docker
@@ -14,19 +20,38 @@ services:
         value: production
       - key: PORT
         value: 8000
+      # Persistent PostgreSQL that does NOT expire (e.g. Neon free tier).
+      # Render's free PostgreSQL is deleted ~30 days after creation, so it is intentionally not used.
+      # Set this value in the Render dashboard (never commit it).
       - key: DATABASE_URL
-        fromDatabase:
-          name: mtk-postgres
-          property: connectionString
+        sync: false
+      # Exact frontend origin(s), e.g. https://your-app.vercel.app (set in dashboard).
       - key: ALLOWED_ORIGINS
-        value: "*"
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      # Secret for short-lived signed download links. Render generates a random value.
+      - key: SIGNING_SECRET
+        generateValue: true
+      - key: AUTH_MODE
+        value: access_key
+      - key: EMBEDDED_WORKER
+        value: "true"
+      # Storage: "local" = ephemeral /tmp on Render Free (files lost on restart -> honest 410).
+      # For durable files switch to "s3" and set S3_BUCKET / S3_ENDPOINT_URL / S3_ACCESS_KEY_ID /
+      # S3_SECRET_ACCESS_KEY in the dashboard (e.g. Backblaze B2 or Cloudflare R2 free allowance).
+      - key: STORAGE_BACKEND
+        value: local
       - key: STORAGE_DIR
         value: /tmp/storage
-
-databases:
-  # Render Free PostgreSQL (Available for 30-day prototype evaluation)
-  # Omitting 'user' allows Render to generate a valid, non-reserved database username automatically
-  - name: mtk-postgres
-    plan: free
-    region: oregon
-    databaseName: multimediatoolkit
+      # CPU models download on first use into the container (re-downloaded after restarts).
+      # Render Free has 512 MB RAM: use the smallest Whisper model; Whisper + Kokoro together
+      # may exceed it -- a 2 GB instance or separate worker is recommended for real use.
+      - key: MODEL_CACHE_DIR
+        value: /tmp/models
+      - key: WHISPER_DEFAULT_MODEL
+        value: tiny
+      # Optional AI modes: set AI_PROVIDER=cloudflare (+ CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)
+      # or AI_PROVIDER=huggingface (+ HF_API_TOKEN) in the dashboard. CPU modes work without it.
+      - key: AI_PROVIDER
+        value: none
