@@ -42,7 +42,7 @@ export default function DashboardPage() {
   const operationalModules = TOOLKIT_MODULES.filter((m) => m.status === "operational");
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-10">
+    <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-10">
       {/* Hero Welcome banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-orange-950/40 via-amber-950/20 to-slate-900 border border-orange-500/30 p-8 shadow-2xl">
         <div className="relative z-10 max-w-2xl space-y-4">
