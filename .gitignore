@@ -1,65 +1,133 @@
-# Environment files
+# =============================================================================
+# Environment files — ignore every real .env, keep the template
+# =============================================================================
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+*.env
+!.env.example
 
+# =============================================================================
 # Python
+# =============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
 .venv/
+venv/
 ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
+.eggs/
 *.egg
+.installed.cfg
 
-# Testing & Linters
+# Python packaging dirs — anchored so source folders such as
+# frontend/src/lib/ or a future app/lib/ are never ignored
+/env/
+/backend/env/
+/worker/env/
+/build/
+/backend/build/
+/worker/build/
+/dist/
+/backend/dist/
+/worker/dist/
+/develop-eggs/
+/downloads/
+/backend/downloads/
+/worker/downloads/
+/eggs/
+/lib/
+/backend/lib/
+/worker/lib/
+/lib64/
+/backend/lib64/
+/worker/lib64/
+/parts/
+/sdist/
+/var/
+/backend/var/
+/worker/var/
+/wheels/
+
+# =============================================================================
+# Testing, coverage & linters
+# =============================================================================
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+coverage/
+coverage.xml
+.nyc_output/
 .mypy_cache/
 .ruff_cache/
+.tox/
 
+# =============================================================================
 # Node & Next.js
+# =============================================================================
 node_modules/
 .next/
-out/
+/frontend/out/
+/frontend/build/
+*.tsbuildinfo
+.vercel/
+.turbo/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Operating System & IDEs
+# =============================================================================
+# Databases (SQLite and its WAL/SHM journal files)
+# =============================================================================
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+
+# =============================================================================
+# Uploaded media, generated outputs & local volumes
+# =============================================================================
+/storage/
+/backend/storage/
+/worker/storage/
+/data/
+/backend/data/
+/worker/data/
+/uploads/
+/backend/uploads/
+/worker/uploads/
+*.log
+logs/
+
+# =============================================================================
+# Operating system & IDEs
+# =============================================================================
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Docker / Volumes
-data/
-storage/
-*.db
-*.log
+# =============================================================================
+# Claude Code local (per-user) settings
+# =============================================================================
+.claude/settings.local.json
 
-backend/*.db-shm
-backend/*.db-wal
+# =============================================================================
+# Model weights and job scratch space (never commit weights)
+# =============================================================================
+/backend/models/
+/backend/work/
+/models/
+*.onnx
+*.part
