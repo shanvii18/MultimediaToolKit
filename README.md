@@ -6,6 +6,8 @@ Convert anything into anything: **5 formats (Text, Image, Audio, Video, Animatio
 - **Backend:** FastAPI, SQLAlchemy 2, Alembic, PostgreSQL (SQLite for local dev), a durable DB-backed job queue (optional Redis wake-ups), and S3-compatible storage
 - **Engines:** FFmpeg, faster-whisper, Kokoro-82M TTS, Tesseract OCR and Pillow, all on CPU. An optional hosted AI provider (Cloudflare Workers AI or Hugging Face) handles generative image models and image description.
 
+**Live demo:** https://multimedia-tool-kit.vercel.app (invite-only) · **API:** https://mtk-backend.onrender.com/health · **Presenting?** See [DEMO_GUIDE.md](DEMO_GUIDE.md)
+
 ---
 
 ## The 20 conversions
@@ -117,10 +119,26 @@ python -m app.cli list-users
 python -m app.cli revoke --email friend@example.com
 ```
 
-## Deployment (free-first)
-- **Backend on Render** via [`render.yaml`](render.yaml). Set `DATABASE_URL` (Neon), `ALLOWED_ORIGINS`, `FRONTEND_URL`, and optionally the `S3_*` and `AI_PROVIDER` variables in the dashboard. Render Free has 512 MB RAM and sleeps after 15 minutes; Whisper defaults to `tiny` there.
-- **Frontend on Vercel**: root directory `frontend`, env `NEXT_PUBLIC_API_URL=https://<your-backend>`.
-- Render's free PostgreSQL is deleted after 30 days, so use a persistent database.
+## Deployment (all free tiers)
+
+| Part | Service | Notes |
+|---|---|---|
+| Frontend | **Vercel Hobby** | Root directory `frontend`. `NEXT_PUBLIC_API_URL=https://mtk-backend.onrender.com` (applied at build time) |
+| Backend | **Render Free** (Docker, Oregon) | [`render.yaml`](render.yaml), 512 MB RAM, sleeps after 15 min idle (~1 min cold start) |
+| Database | **Neon Free** PostgreSQL 18 (Oregon, pooled) | Persistent; Alembic migrations run automatically at start-up |
+| Files | Render local `/tmp/storage` | Temporary: cleared on restart or sleep. Old downloads return 410 Gone |
+
+Backend environment (set in the Render dashboard; secrets never committed):
+- **Secrets and URLs:** `DATABASE_URL` (Neon pooled URL), `SIGNING_SECRET` (random, at least 32 characters),
+  `ALLOWED_ORIGINS` and `FRONTEND_URL` (the Vercel URL).
+- **Mode:** `ENVIRONMENT=production`, `AUTH_MODE=access_key`, `EMBEDDED_WORKER=true`.
+- **Storage:** `STORAGE_BACKEND=local`, `STORAGE_DIR=/tmp/storage`.
+- **512 MB tuning:** `WHISPER_DEFAULT_MODEL=tiny`, `KEEP_MODELS_LOADED=false`,
+  `FFMPEG_THREADS=2`, `WHISPER_CPU_THREADS=2`, `TTS_CPU_THREADS=2`.
+- **AI:** `AI_PROVIDER=none`.
+
+With these settings, all 20 conversions measured at or below ~450 MB peak on short inputs. Long media may still
+exceed 512 MB on the free plan. See [DEPLOYMENT_PROGRESS.md](DEPLOYMENT_PROGRESS.md) for the migration record and limits.
 
 ## Licences
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSE_AUDIT.md](LICENSE_AUDIT.md). All bundled engines and models are permissively licensed. Note: `phonemizer`/`espeak-ng` (used by Kokoro) are GPL-3.0, which is fine for hosting, but don't publish Docker images without reviewing LICENSE_AUDIT.md §4.1.
