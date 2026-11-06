@@ -47,6 +47,17 @@ class MediaInfo:
     format_name: str = ""
 
 
+def threading_args(args: List[str], output_path: Optional[str] = None) -> List[str]:
+    """Apply FFMPEG_THREADS: cap filter-graph threads (global) and encoder threads (output option)."""
+    n = settings.FFMPEG_THREADS
+    if n <= 0:
+        return list(args)
+    out = ["-filter_threads", str(n), "-filter_complex_threads", str(n), *args]
+    if output_path and args and args[-1] == output_path:
+        out = out[:-1] + ["-threads", str(n), output_path]
+    return out
+
+
 def _remove_quietly(path: Optional[str]) -> None:
     if path and os.path.exists(path):
         try:
@@ -211,7 +222,7 @@ class FFmpegAdapter:
     def run_ffmpeg(self, args: List[str], output_path: Optional[str] = None,
                    timeout_seconds: Optional[int] = None, error_hint: str = "") -> None:
         """Run ffmpeg with -y/-hide_banner and the standard timeout; raise RuntimeError with the stderr tail."""
-        cmd = [self._require(), "-y", "-hide_banner", "-loglevel", "error", *args]
+        cmd = [self._require(), "-y", "-hide_banner", "-loglevel", "error", *threading_args(args, output_path)]
         res = self._run(cmd, output_path, timeout_seconds)
         if res.returncode != 0:
             _remove_quietly(output_path)

@@ -110,7 +110,20 @@ class KokoroTTSAdapter:
             from kokoro_onnx import Kokoro
 
             logger.info("Loading Kokoro TTS model %s", self.model_path)
-            self._kokoro = Kokoro(self.model_path, self.voices_path)
+            threads = settings.TTS_CPU_THREADS
+            if threads > 0:
+                # Small servers: cap ONNX Runtime threads and skip its memory arena (lower peak RAM).
+                import onnxruntime as rt
+
+                opts = rt.SessionOptions()
+                opts.intra_op_num_threads = threads
+                opts.inter_op_num_threads = 1
+                opts.enable_cpu_mem_arena = False
+                session = rt.InferenceSession(self.model_path, sess_options=opts,
+                                              providers=["CPUExecutionProvider"])
+                self._kokoro = Kokoro.from_session(session, self.voices_path)
+            else:
+                self._kokoro = Kokoro(self.model_path, self.voices_path)
         return self._kokoro
 
     @staticmethod

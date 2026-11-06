@@ -59,6 +59,9 @@ class Settings(BaseSettings):
 
     # ---- FFmpeg ----
     FFMPEG_TIMEOUT_SECONDS: int = 600
+    # 0 = FFmpeg decides (one thread per visible core). Small servers (Render Free, 512 MB):
+    # 1-2 keeps encoder/filter memory low, because containers often "see" many host cores.
+    FFMPEG_THREADS: int = 0
 
     # ---- Storage backend ----
     # "local": files under STORAGE_DIR (development / tests).
@@ -85,6 +88,7 @@ class Settings(BaseSettings):
     KOKORO_MODEL_FILE: str = "kokoro-v1.0.int8.onnx"
     KOKORO_VOICES_FILE: str = "voices-v1.0.bin"
     KOKORO_RELEASE_URL: str = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+    TTS_CPU_THREADS: int = 0                       # 0 = ONNX Runtime default; 1-2 on 512 MB servers
     TESSERACT_CMD: str = ""                        # auto-detected when empty
     # false = release Whisper/Kokoro from RAM after every job (slower next job, lower idle memory)
     KEEP_MODELS_LOADED: bool = True

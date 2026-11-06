@@ -78,3 +78,27 @@ def test_release_models_clears_cached_engines():
     whisper_adapter._model, tts_adapter._kokoro = object(), object()
     release_models()
     assert whisper_adapter._model is None and tts_adapter._kokoro is None
+
+
+def test_ffmpeg_threads_cap(monkeypatch):
+    from app.adapters.ffmpeg_adapter import threading_args
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "FFMPEG_THREADS", 0)
+    assert threading_args(["-i", "a.wav", "o.mp4"], "o.mp4") == ["-i", "a.wav", "o.mp4"]
+    monkeypatch.setattr(settings, "FFMPEG_THREADS", 2)
+    out = threading_args(["-i", "a.wav", "o.mp4"], "o.mp4")
+    assert out[:4] == ["-filter_threads", "2", "-filter_complex_threads", "2"]
+    assert out[-3:] == ["-threads", "2", "o.mp4"]
+
+
+def test_ffmpeg_threads_cap_still_produces_output(monkeypatch, tmp_path):
+    from app.adapters.ffmpeg_adapter import ffmpeg_adapter
+    from app.core.config import settings
+    if not ffmpeg_adapter.get_ffmpeg_cmd():
+        import pytest
+        pytest.skip("FFmpeg not installed")
+    monkeypatch.setattr(settings, "FFMPEG_THREADS", 1)
+    out = str(tmp_path / "t.mp4")
+    ffmpeg_adapter.run_ffmpeg(["-f", "lavfi", "-i", "testsrc=size=320x240:rate=10", "-t", "1",
+                               "-c:v", "libx264", "-pix_fmt", "yuv420p", out], out)
+    assert (tmp_path / "t.mp4").stat().st_size > 0

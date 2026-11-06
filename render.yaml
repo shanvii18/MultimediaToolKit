@@ -54,6 +54,17 @@ services:
         value: /tmp/models
       - key: WHISPER_DEFAULT_MODEL
         value: tiny
+      # 512 MB: unload Whisper/Kokoro after each job so idle memory stays low.
+      - key: KEEP_MODELS_LOADED
+        value: "false"
+      # Cap engine threads: containers can "see" many host cores, and one encoder/ONNX thread per
+      # core multiplies memory. Measured peaks with these caps: <= ~450 MB on short inputs.
+      - key: FFMPEG_THREADS
+        value: "2"
+      - key: WHISPER_CPU_THREADS
+        value: "2"
+      - key: TTS_CPU_THREADS
+        value: "2"
       # Optional AI modes: set AI_PROVIDER=cloudflare (+ CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)
       # or AI_PROVIDER=huggingface (+ HF_API_TOKEN) in the dashboard. CPU modes work without it.
       - key: AI_PROVIDER

@@ -131,3 +131,12 @@ desktop.ini
 /models/
 *.onnx
 *.part
+
+# Database backups and credential files (kept outside the repo on D:\MultimediaToolKit, never commit)
+*.dump
+*.backup
+/backups/
+/secrets/
+*_api_key.txt
+*_token.txt
+*db_url*.txt
