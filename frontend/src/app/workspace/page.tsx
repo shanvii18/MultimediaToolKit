@@ -163,7 +163,7 @@ function WorkspaceStudioContent() {
   const storyboardData = activeJob?.outputs?.[0]?.asset?.metadata_json?.storyboard_data;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-8">
+    <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-8">
       {/* Studio Header */}
       <div className="space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-mono">
@@ -362,7 +362,7 @@ function WorkspaceStudioContent() {
                   </div>
                   {activeJob.outputs && activeJob.outputs.length > 0 && (
                     <a
-                      href={ApiClient.getDownloadUrl(activeJob.outputs[0].asset_id)}
+                      href={ApiClient.getDownloadUrl(activeJob.outputs[0].asset)}
                       download
                       className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium flex items-center gap-1.5 transition-colors"
                     >
@@ -554,7 +554,7 @@ function WorkspaceStudioContent() {
                       </div>
 
                       <a
-                        href={ApiClient.getDownloadUrl(activeJob.outputs[0].asset_id)}
+                        href={ApiClient.getDownloadUrl(activeJob.outputs[0].asset)}
                         download
                         className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold flex items-center gap-2 transition-colors"
                       >
@@ -569,7 +569,7 @@ function WorkspaceStudioContent() {
                       <audio
                         controls
                         className="w-full h-10 rounded-lg bg-slate-900"
-                        src={ApiClient.getDownloadUrl(activeJob.outputs[0].asset_id)}
+                        src={ApiClient.getDownloadUrl(activeJob.outputs[0].asset)}
                       />
                     </div>
                   </div>

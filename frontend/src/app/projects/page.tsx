@@ -9,6 +9,8 @@ import {
   Calendar,
   Layers,
   Sparkles,
+  Trash2,
+  Search,
 } from "lucide-react";
 import { ApiClient } from "@/services/apiClient";
 import { Project, Asset } from "@/types";
@@ -17,6 +19,10 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState("all");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [libError, setLibError] = useState<string | null>(null);
 
   // New project modal/form state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -41,6 +47,24 @@ export default function ProjectsPage() {
     loadData();
   }, []);
 
+  const deleteAsset = async (id: string) => {
+    setLibError(null);
+    try {
+      await ApiClient.deleteAsset(id);
+      setAssets((list) => list.filter((a) => a.id !== id));
+    } catch (err: any) {
+      setLibError(err.message || "Could not delete the file.");
+    } finally {
+      setConfirmId(null);
+    }
+  };
+
+  const visibleAssets = assets.filter(
+    (a) =>
+      (kind === "all" || a.media_type.startsWith(kind)) &&
+      (!query.trim() || a.filename.toLowerCase().includes(query.trim().toLowerCase()))
+  );
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
@@ -59,7 +83,7 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-10">
+    <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-10">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="space-y-1">
@@ -130,18 +154,44 @@ export default function ProjectsPage() {
       <div className="space-y-4 pt-4 border-t border-slate-800">
         <h2 className="text-lg font-bold text-white flex items-center gap-2">
           <Layers className="h-4 w-4 text-amber-400" />
-          <span>Media Library Assets</span>
+          <span>Media Library</span>
+          <span className="text-xs font-normal text-slate-500">({assets.length} files)</span>
         </h2>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="h-4 w-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search files…"
+              className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+            />
+          </div>
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+            className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-orange-500"
+          >
+            <option value="all">All types</option>
+            <option value="image/">Images</option>
+            <option value="audio/">Audio</option>
+            <option value="video/">Video</option>
+            <option value="text/">Text</option>
+            <option value="application/">Data & subtitles</option>
+          </select>
+        </div>
+        {libError && <p className="text-xs text-rose-300">{libError}</p>}
 
         {loading ? (
           <div className="py-12 text-center text-xs text-slate-500">Loading assets...</div>
-        ) : assets.length === 0 ? (
+        ) : visibleAssets.length === 0 ? (
           <div className="p-8 border border-dashed border-slate-800 rounded-2xl text-center text-xs text-slate-500">
-            No media assets registered in storage yet.
+            {assets.length === 0 ? "No files yet. Uploads and conversion results appear here." : "No files match your search."}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {assets.map((asset) => (
+            {visibleAssets.map((asset) => (
               <div
                 key={asset.id}
                 className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3 flex flex-col justify-between"
@@ -159,9 +209,30 @@ export default function ProjectsPage() {
                   <p className="text-[10px] font-mono text-slate-500">{asset.media_type}</p>
                 </div>
 
-                <div className="pt-2 border-t border-slate-800/80 flex justify-end">
+                {asset.media_type.startsWith("image/") && asset.media_type !== "image/svg+xml" && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={ApiClient.getDownloadUrl(asset)} alt="" loading="lazy" className="w-full h-28 object-cover rounded-lg bg-slate-950" />
+                )}
+                {asset.media_type.startsWith("audio/") && (
+                  <audio controls preload="none" src={ApiClient.getDownloadUrl(asset)} className="w-full h-8" />
+                )}
+                <div className="pt-2 border-t border-slate-800/80 flex justify-between items-center">
+                  {confirmId === asset.id ? (
+                    <span className="flex items-center gap-2 text-[11px]">
+                      <button onClick={() => deleteAsset(asset.id)} className="text-rose-400 hover:text-rose-300 font-medium">
+                        Delete
+                      </button>
+                      <button onClick={() => setConfirmId(null)} className="text-slate-400 hover:text-white">
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setConfirmId(asset.id)} className="text-slate-500 hover:text-rose-400" title="Delete file">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <a
-                    href={ApiClient.getDownloadUrl(asset.id)}
+                    href={ApiClient.getDownloadUrl(asset)}
                     download
                     className="inline-flex items-center gap-1 text-[11px] text-orange-400 hover:text-orange-300 font-medium"
                   >

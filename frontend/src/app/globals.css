@@ -139,3 +139,32 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   Light theme. The UI is authored dark-first with Tailwind slate utilities;
+   these overrides re-map those utilities when <html> has the "light" class.
+   Brand gradients/oranges keep white text.
+   ========================================================================== */
+html.light { color-scheme: light; }
+html.dark { color-scheme: dark; }
+html.light body { background: #FAF9F6; color: #0A1020; }
+html.light .bg-slate-950, html.light .bg-slate-950\/80, html.light .bg-slate-950\/60 { background-color: #FAF9F6 !important; }
+html.light .bg-slate-900, html.light .bg-slate-900\/60, html.light .bg-slate-900\/40, html.light .bg-slate-900\/30 { background-color: #ffffff !important; }
+html.light .bg-slate-800, html.light .bg-slate-800\/80, html.light .bg-slate-700\/30 { background-color: #f1f0ec !important; }
+html.light .hover\:bg-slate-900:hover, html.light .hover\:bg-slate-800\/60:hover,
+html.light .hover\:bg-slate-800\/50:hover, html.light .hover\:bg-slate-800\/30:hover,
+html.light .hover\:bg-slate-700:hover { background-color: #ece9e2 !important; }
+html.light .border-slate-800, html.light .border-slate-800\/80, html.light .border-slate-800\/60,
+html.light .border-slate-700, html.light .border-slate-700\/80, html.light .divide-slate-800\/60 > * + * { border-color: rgba(15, 23, 42, 0.12) !important; }
+html.light .text-white { color: #0A1020; }
+html.light [class*="from-orange"] .text-white, html.light .text-white[class*="from-orange"],
+html.light .text-white[class*="bg-orange"], html.light [class*="bg-orange-5"] .text-white,
+html.light .text-white[class*="bg-rose-5"], html.light .text-white[class*="bg-emerald-5"] { color: #ffffff; }
+html.light .text-slate-100, html.light .text-slate-200 { color: #1e293b !important; }
+html.light .text-slate-300 { color: #334155 !important; }
+html.light .text-slate-400 { color: #475569 !important; }
+html.light .text-slate-500, html.light .text-slate-600 { color: #64748b !important; }
+html.light .hover\:text-white:hover, html.light .hover\:text-slate-200:hover { color: #0A1020 !important; }
+html.light .placeholder-slate-500::placeholder { color: #94a3b8; }
+html.light .shadow-orange-500\/25 { --tw-shadow-color: rgba(255, 94, 0, 0.18); }
+html.light pre { background-color: #f4f3ef !important; color: #1e293b !important; }

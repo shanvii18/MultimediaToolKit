@@ -49,6 +49,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       PORT: 8000
       HOST: 0.0.0.0
+      STORAGE_DIR: /app/storage
+      # Jobs are executed by the dedicated `worker` service below.
+      EMBEDDED_WORKER: "false"
+      SIGNING_SECRET: ${SIGNING_SECRET:-}
+      AUTH_MODE: ${AUTH_MODE:-}
+      FRONTEND_URL: http://localhost:${FRONTEND_PORT:-3000}
+    volumes:
+      - media_storage:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,17 +65,24 @@ services:
     networks:
       - mtk-network
 
+  # Durable job worker: runs the backend's job queue (`python -m app.worker`).
+  # It shares the backend image and the media volume. (The legacy ./worker stub is no longer used.)
   worker:
     build:
-      context: ./worker
+      context: ./backend
       dockerfile: Dockerfile
     container_name: mtk-worker
     restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-multimediatoolkit}
       REDIS_URL: redis://redis:6379/0
-      POLL_INTERVAL_SECONDS: 5
+      STORAGE_DIR: /app/storage
+      SIGNING_SECRET: ${SIGNING_SECRET:-}
+      AUTH_MODE: ${AUTH_MODE:-}
+    volumes:
+      - media_storage:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,3 +117,5 @@ volumes:
     name: mtk-postgres-data
   redis_data:
     name: mtk-redis-data
+  media_storage:
+    name: mtk-media-storage

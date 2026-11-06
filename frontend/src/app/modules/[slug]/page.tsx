@@ -27,7 +27,7 @@ export default function ModuleDetailPage() {
 
   if (!toolkitModule) {
     return (
-      <div className="p-8 max-w-4xl mx-auto space-y-6">
+      <div className="p-4 sm:p-8 max-w-4xl mx-auto space-y-6">
         <Link
           href="/modules"
           className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"

@@ -63,6 +63,7 @@ class Job(Base):
     tool = Column(String(100), nullable=False, index=True)  # e.g., "video_to_audio", "speech_to_text", "idea_to_storyboard"
     status = Column(String(50), default="queued", index=True, nullable=False)  # queued, running, succeeded, failed, cancelled
     progress = Column(Integer, default=0, nullable=False)
+    progress_message = Column(String(255), nullable=True)  # human-readable current step (migration 0002)
     input_asset_ids = Column(JSON, default=list)
     params_json = Column(JSON, default=dict)
     error_code = Column(String(100), nullable=True)
@@ -86,6 +87,35 @@ class JobOutput(Base):
 
     job = relationship("Job", back_populates="outputs")
     asset = relationship("Asset", back_populates="outputs")
+
+
+class AccessKey(Base):
+    """Invite-only personal access key. Only a SHA-256 hash of the key is stored."""
+    __tablename__ = "access_keys"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    key_hash = Column(String(64), unique=True, index=True, nullable=False)
+    label = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+
+
+class JobLease(Base):
+    """
+    Worker lease for a running job (kept in its own table so existing databases
+    need no column migration). Lets abandoned jobs be detected and recovered.
+    """
+    __tablename__ = "job_leases"
+
+    job_id = Column(String(36), ForeignKey("jobs.id"), primary_key=True)
+    worker_id = Column(String(100), nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    claimed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    heartbeat_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class UsageEvent(Base):

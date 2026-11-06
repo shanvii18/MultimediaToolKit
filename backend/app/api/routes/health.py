@@ -1,6 +1,10 @@
+import logging
 from fastapi import APIRouter
-from app.core.database import engine
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from app.core import database
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Health"])
 
@@ -8,13 +12,15 @@ router = APIRouter(tags=["Health"])
 @router.get("/health")
 def health_check():
     """
-    Health check endpoint verifying backend service status and database connectivity.
-    Strictly conforms to PPT Slide 8: GET /health returns {"status":"ok"}.
+    Health check verifying backend service status and database connectivity.
+    Healthy: 200 {"status":"ok"} (PPT Slide 8 contract).
+    Database unreachable: 503 so load balancers / uptime monitors see the real state.
     """
     try:
-        with engine.connect() as conn:
+        with database.engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.error("Health check: database unreachable (%s)", type(e).__name__)
+        return JSONResponse(status_code=503, content={"status": "error", "database": "unreachable"})
 
     return {"status": "ok"}

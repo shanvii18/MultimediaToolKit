@@ -307,6 +307,10 @@ def test_media_extractor_malformed_file_fails_cleanly():
     assert job_res.status_code == 200
     job_id = job_res.json()["id"]
 
+    # Jobs are now durably queued instead of running inside the request (Phase 0);
+    # execute it the same way the worker does.
+    job_runner_service.process_job(job_id)
+
     # Inspect job result: must fail honestly without reporting false success
     query_res = client.get(f"/api/v1/jobs/{job_id}")
     assert query_res.status_code == 200
