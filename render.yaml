@@ -28,6 +28,9 @@ services:
       # Exact frontend origin(s), e.g. https://your-app.vercel.app (set in dashboard).
       - key: ALLOWED_ORIGINS
         sync: false
+      # Optional: regex for Vercel preview URLs, e.g. ^https://your-app(-[a-z0-9-]+)?\.vercel\.app$
+      - key: ALLOWED_ORIGIN_REGEX
+        value: ""
       - key: FRONTEND_URL
         sync: false
       # Secret for short-lived signed download links. Render generates a random value.

@@ -31,6 +31,19 @@ def _error_code(exc: Exception) -> str:
     return "PROCESSING_ERROR"
 
 
+def release_models() -> None:
+    """Drop cached ML models so their memory can be reclaimed (small-RAM servers)."""
+    import gc
+
+    from app.adapters.tts_adapter import tts_adapter
+    from app.adapters.whisper_adapter import whisper_adapter
+
+    whisper_adapter._model = None
+    whisper_adapter._model_size = None
+    tts_adapter._kokoro = None
+    gc.collect()
+
+
 class JobRunnerService:
     @staticmethod
     def process_job(job_id: str, db: Optional[Session] = None, already_claimed: bool = False) -> Optional[Job]:
@@ -117,6 +130,8 @@ class JobRunnerService:
                 db.rollback()
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+            if not settings.KEEP_MODELS_LOADED:
+                release_models()
 
         return job
 

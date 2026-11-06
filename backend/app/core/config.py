@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # CORS configuration (comma-separated origins, or "*").
     # Auth uses a bearer header, not cookies, so credentials are never allowed cross-origin.
     ALLOWED_ORIGINS: str = "*"
+    # Optional regex for extra origins, e.g. Vercel preview deployments:
+    #   ^https://multimedia-toolkit(-[a-z0-9-]+)?\.vercel\.app$
+    ALLOWED_ORIGIN_REGEX: str = ""
 
     # Database configuration (PostgreSQL; SQLite only for local development)
     DATABASE_URL: str = "sqlite:///./multimediatoolkit.db"
@@ -83,6 +86,8 @@ class Settings(BaseSettings):
     KOKORO_VOICES_FILE: str = "voices-v1.0.bin"
     KOKORO_RELEASE_URL: str = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
     TESSERACT_CMD: str = ""                        # auto-detected when empty
+    # false = release Whisper/Kokoro from RAM after every job (slower next job, lower idle memory)
+    KEEP_MODELS_LOADED: bool = True
     OCR_TIMEOUT_SECONDS: int = 120
 
     # ---- Optional hosted AI provider (image generation + image description) ----
@@ -178,6 +183,12 @@ def storage_warnings(s: Settings) -> List[str]:
 
 
 settings = Settings()
+
+# Empty values (e.g. "STORAGE_DIR=" copied from .env.example) mean "use the default".
+for _name in ("STORAGE_DIR", "WORK_DIR", "MODEL_CACHE_DIR", "WHISPER_DEFAULT_MODEL", "AI_PROVIDER",
+              "STORAGE_BACKEND", "ENVIRONMENT"):
+    if not str(getattr(settings, _name) or "").strip():
+        setattr(settings, _name, Settings.model_fields[_name].default)
 
 _errors = validate_settings(settings)
 if _errors:

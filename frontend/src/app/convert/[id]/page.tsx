@@ -212,7 +212,18 @@ export default function ConversionWorkspacePage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-white">{m.label}</span>
-                        <StatusBadge status={m.status} reason={m.reason} />
+                        <span className="flex items-center gap-1.5">
+                          {m.engines.some((e) => e.startsWith("ai_")) ? (
+                            <span className="px-1.5 py-0.5 rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 text-[10px] font-semibold">
+                              AI provider
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 text-[10px] font-semibold">
+                              CPU
+                            </span>
+                          )}
+                          <StatusBadge status={m.status} reason={m.reason} />
+                        </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1">{m.description}</p>
                       {m.status === "unavailable" && m.reason && (
@@ -301,15 +312,21 @@ export default function ConversionWorkspacePage() {
           {previewUrl && isVideoFile && (
             <div className="space-y-2">
               <video ref={videoRef} src={previewUrl} controls className="w-full rounded-xl bg-black max-h-72" />
-              {visibleParams.some((p) => p.name === "timestamp") && (
-                <button
-                  type="button"
-                  onClick={() => setValue("timestamp", Number((videoRef.current?.currentTime || 0).toFixed(2)))}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white"
-                >
-                  Use current frame ({Number(values.timestamp || 0).toFixed(2)}s selected)
-                </button>
-              )}
+              {(() => {
+                // Frame picker: fills "timestamp" (Video→Image) or "start" (Video→Animation).
+                const target = visibleParams.find((p) => p.name === "timestamp" || p.name === "start")?.name;
+                if (!target) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setValue(target, Number((videoRef.current?.currentTime || 0).toFixed(2)))}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white"
+                  >
+                    Use current position as {target === "start" ? "start" : "frame"} (
+                    {Number(values[target] || 0).toFixed(2)}s selected)
+                  </button>
+                );
+              })()}
             </div>
           )}
           {previewUrl && isImageFile && (

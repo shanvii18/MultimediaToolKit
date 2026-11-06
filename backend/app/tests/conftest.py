@@ -11,7 +11,8 @@ import tempfile
 
 _TEST_ROOT = tempfile.mkdtemp(prefix="mtk-tests-")
 os.environ["ENVIRONMENT"] = "development"
-os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TEST_ROOT, 'test.db')}"
+# TEST_DATABASE_URL lets the same suite run against a real (disposable!) PostgreSQL database.
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{os.path.join(_TEST_ROOT, 'test.db')}"
 os.environ["STORAGE_DIR"] = os.path.join(_TEST_ROOT, "storage")
 os.environ["WORK_DIR"] = os.path.join(_TEST_ROOT, "work")
 os.environ["STORAGE_BACKEND"] = "local"

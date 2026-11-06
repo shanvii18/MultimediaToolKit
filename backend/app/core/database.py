@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -24,15 +25,25 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
-def _postgres_reachable(url: str) -> Exception | None:
-    try:
-        temp_engine = create_engine(url, connect_args={"connect_timeout": 3}, echo=False)
-        with temp_engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        temp_engine.dispose()
-        return None
-    except Exception as e:  # noqa: BLE001 - any connection failure counts
-        return e
+def _postgres_reachable(url: str, attempts: int = 1, timeout: int = 3) -> Exception | None:
+    """
+    Try to connect. Serverless Postgres (e.g. Neon free tier) suspends idle compute and can
+    take several seconds to wake, so production start-up retries with backoff.
+    """
+    last: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            temp_engine = create_engine(url, connect_args={"connect_timeout": timeout}, echo=False)
+            with temp_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            temp_engine.dispose()
+            return None
+        except Exception as e:  # noqa: BLE001 - any connection failure counts
+            last = e
+            if attempt < attempts:
+                logger.warning("Database not reachable yet (attempt %s/%s): %s", attempt, attempts, type(e).__name__)
+                time.sleep(min(2 * attempt, 6))
+    return last
 
 
 def resolve_database_url(raw_url: str, is_development: bool, allow_sqlite_fallback: bool = True) -> str:
@@ -54,7 +65,8 @@ def resolve_database_url(raw_url: str, is_development: bool, allow_sqlite_fallba
         return url
 
     if "postgresql" in url:
-        err = _postgres_reachable(url)
+        # Development: one quick probe (falls back to SQLite). Production: patient retries.
+        err = _postgres_reachable(url) if is_development else _postgres_reachable(url, attempts=4, timeout=10)
         if err is None:
             return url
         if is_development and allow_sqlite_fallback:
@@ -84,7 +96,14 @@ if db_url.startswith("sqlite"):
         cursor.close()
 else:
     # pool_pre_ping: serverless Postgres (e.g. Neon free tier) closes idle connections.
-    engine = create_engine(db_url, echo=False, pool_pre_ping=True)
+    engine = create_engine(
+        db_url,
+        echo=False,
+        pool_pre_ping=True,   # detect connections closed while Neon compute was suspended
+        pool_recycle=300,     # never reuse a connection older than 5 min (idle timeouts)
+        pool_size=5,
+        max_overflow=5,       # small, fixed footprint on free-tier databases
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 Base = declarative_base()

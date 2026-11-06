@@ -63,3 +63,18 @@ def test_redis_wakeup_signal_round_trip():
 def test_redis_disabled_falls_back_to_polling():
     assert job_queue.notify_new_job("job-2") is False          # QUEUE_NOTIFY_REDIS is off in tests
     assert job_queue.wait_for_job_signal(1) is None             # caller polls the database instead
+
+
+def test_cors_origin_regex_setting_is_wired():
+    from app.main import app as fastapi_app
+    cors = [m for m in fastapi_app.user_middleware if m.cls.__name__ == "CORSMiddleware"][0]
+    assert "allow_origin_regex" in cors.kwargs and cors.kwargs["allow_credentials"] is False
+
+
+def test_release_models_clears_cached_engines():
+    from app.adapters.tts_adapter import tts_adapter
+    from app.adapters.whisper_adapter import whisper_adapter
+    from app.services.job_runner_service import release_models
+    whisper_adapter._model, tts_adapter._kokoro = object(), object()
+    release_models()
+    assert whisper_adapter._model is None and tts_adapter._kokoro is None
