@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -71,6 +71,10 @@ class Job(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    # Client-supplied key (Idempotency-Key header): a retried submission returns the same job.
+    idempotency_key = Column(String(64), nullable=True)
+
+    __table_args__ = (Index("uq_jobs_user_idempotency", "user_id", "idempotency_key", unique=True),)
 
     project = relationship("Project", back_populates="jobs")
     outputs = relationship("JobOutput", back_populates="job", cascade="all, delete-orphan")

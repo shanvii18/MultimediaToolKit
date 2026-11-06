@@ -13,9 +13,9 @@ import {
   Play,
   Upload,
 } from "lucide-react";
-import { ApiClient } from "@/services/apiClient";
+import { ApiClient, describeError } from "@/services/apiClient";
 import { Asset, Conversion, ConversionParam, Job } from "@/types";
-import { FormatIcon, StatusBadge, formatBytes } from "@/components/convert/ConvertUi";
+import { FormatIcon, StatusBadge, formatBytes, KindBadge } from "@/components/convert/ConvertUi";
 
 const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 const VIDEO_EXT = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v"];
@@ -64,7 +64,7 @@ export default function ConversionWorkspacePage() {
         const firstRunnable = found.modes.find((m) => m.status === "available") || found.modes[0];
         setModeId(firstRunnable?.id || "");
       })
-      .catch((e) => setLoadError(e.message || "Could not load conversion."));
+      .catch((e) => setLoadError(describeError(e)));
   }, [conversionId]);
 
   // Local preview (video scrubbing for frame picking, image preview)
@@ -85,7 +85,7 @@ export default function ConversionWorkspacePage() {
       try {
         setJob(await ApiClient.getJob(job.id));
       } catch (e: any) {
-        setError(e.message);
+        setError(describeError(e));
       }
     }, 1500);
     return () => clearInterval(timer);
@@ -141,7 +141,7 @@ export default function ConversionWorkspacePage() {
       });
       setJob(await ApiClient.createJob(conversion.id, inputIds, payload));
     } catch (e: any) {
-      setError(e.message || "Could not start the conversion.");
+      setError(describeError(e));
     } finally {
       setSubmitting(false);
     }
@@ -197,7 +197,7 @@ export default function ConversionWorkspacePage() {
               <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Mode</label>
               <div className="grid grid-cols-1 gap-2">
                 {conversion.modes.map((m) => {
-                  const selectable = m.status === "available";
+                  const selectable = m.status === "available" || m.status === "temporarily_unavailable";
                   return (
                     <button
                       key={m.id}
@@ -213,21 +213,17 @@ export default function ConversionWorkspacePage() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-white">{m.label}</span>
                         <span className="flex items-center gap-1.5">
-                          {m.engines.some((e) => e.startsWith("ai_")) ? (
-                            <span className="px-1.5 py-0.5 rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 text-[10px] font-semibold">
-                              AI provider
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 text-[10px] font-semibold">
-                              CPU
-                            </span>
-                          )}
+                          <KindBadge kind={m.kind} />
                           <StatusBadge status={m.status} reason={m.reason} />
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1">{m.description}</p>
-                      {m.status === "unavailable" && m.reason && (
-                        <p className="text-[11px] text-amber-300 mt-1">{m.reason}</p>
+                      {m.status !== "available" && m.status !== "coming_soon" && m.reason && (
+                        <p className="text-[11px] text-amber-300 mt-1">
+                          {m.status === "needs_config"
+                            ? "Not configured on this server yet: the site owner must add an AI provider key."
+                            : m.reason}
+                        </p>
                       )}
                     </button>
                   );
@@ -235,7 +231,7 @@ export default function ConversionWorkspacePage() {
               </div>
             </div>
           )}
-          {conversion.modes.length === 1 && mode && mode.status === "unavailable" && (
+          {conversion.modes.length === 1 && mode && mode.status !== "available" && mode.status !== "coming_soon" && (
             <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/50 text-amber-300 text-xs">
               {mode.reason}
             </div>
@@ -353,7 +349,7 @@ export default function ConversionWorkspacePage() {
           <button
             type="button"
             onClick={submit}
-            disabled={running || !mode || mode.status !== "available"}
+            disabled={running || !mode || !(mode.status === "available" || mode.status === "temporarily_unavailable")}
             className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm inline-flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25"
           >
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}

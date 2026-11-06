@@ -12,7 +12,7 @@ from app.adapters.ocr_adapter import OCR_LANGUAGE_NAMES, OCR_LAYOUTS
 from app.adapters.tts_adapter import KOKORO_VOICES
 from app.adapters.whisper_adapter import WHISPER_LANGUAGES, WHISPER_MODELS
 from app.core.config import settings
-from app.engines.availability import unavailable_reason
+from app.engines.availability import AI_ENGINES, LOCAL_AI_ENGINES, engines_state, unavailable_reason
 from app.engines.base import (
     ANIMATION_EXTENSIONS, AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, TEXT_EXTENSIONS, VIDEO_EXTENSIONS,
     ConversionSpec, ModeSpec, ParamSpec,
@@ -134,6 +134,13 @@ def _coming_soon(cid: str, source: str, target: str, title: str, description: st
     )
 
 
+P_STYLE_PROMPT = ParamSpec("style_prompt", "Style (describe the look)", type="text",
+                           default="a vibrant watercolor painting", max_length=300, modes=("ai_restyle",),
+                           help="e.g. 'anime illustration', 'oil painting', 'cyberpunk neon'")
+P_STRENGTH = ParamSpec("strength", "How strongly to restyle", type="number", default=0.6, min=0.2, max=0.9,
+                       step=0.05, modes=("ai_restyle",))
+
+
 _SPECS: List[ConversionSpec] = [
     # ---------- NORMAL ----------
     ConversionSpec(
@@ -214,6 +221,9 @@ _SPECS: List[ConversionSpec] = [
         run=gen.text_to_video, input_kind="file_or_text", accepted_extensions=TEXT_EXTENSIONS,
         modes=[ModeSpec("slides", "Narrated typography scenes", "Scene cards + Kokoro narration + camera motion (CPU).",
                         engines=("pillow", "ffmpeg", "kokoro")),
+               ModeSpec("ai_video", "AI video generation (Wan 2.x)",
+                        "True text-to-video needs a GPU video model; no free hosted provider exists, so it is "
+                        "not offered yet.", coming_soon=True),
                ModeSpec("ai_scenes", "AI-illustrated scenes", "AI image per scene + narration + camera motion.",
                         engines=("ai_image", "pillow", "ffmpeg", "kokoro"))],
         params=[p_text("Script", 1800, "Each sentence becomes a scene (max 10 scenes)."), p_aspect("landscape"),
@@ -305,6 +315,9 @@ _SPECS: List[ConversionSpec] = [
         title="Image → Video", description="Cinematic camera motion, or an AI-narrated video of the image.",
         run=gen.image_to_video, accepted_extensions=IMAGE_EXTENSIONS,
         modes=[ModeSpec("ken_burns", "Camera motion", "Smooth Ken Burns zoom/pan (CPU).", engines=("ffmpeg", "pillow")),
+               ModeSpec("ai_motion", "AI image-to-video (Wan 2.x)",
+                        "Generated motion needs a GPU video model; no free hosted provider exists, so it is not "
+                        "offered yet.", coming_soon=True),
                ModeSpec("narrated", "AI-narrated", "AI describes the image; Kokoro narrates over the motion.",
                         engines=("ai_caption", "kokoro", "ffmpeg", "pillow"))],
         params=[ParamSpec("motion", "Motion", default="zoom_in", choices=MOTIONS),
@@ -316,7 +329,10 @@ _SPECS: List[ConversionSpec] = [
         id="image_to_animation", source="image", target="animation", category="generative",
         title="Image → Animation", description="A seamless looping animation with camera motion.",
         run=gen.image_to_animation, accepted_extensions=IMAGE_EXTENSIONS,
-        modes=[ModeSpec("loop", "Seamless motion loop", "Zoom/pan boomerang loop (CPU).", engines=("ffmpeg", "pillow"))],
+        modes=[ModeSpec("loop", "Seamless motion loop", "Zoom/pan boomerang loop (CPU).", engines=("ffmpeg", "pillow")),
+               ModeSpec("ai_animate", "AI animation (AnimateDiff)",
+                        "Needs a GPU animation model; no free hosted provider exists, so it is not offered yet.",
+                        coming_soon=True)],
         params=[ParamSpec("motion", "Motion", default="zoom_in", choices=MOTIONS),
                 ParamSpec("seconds", "Loop half-length (seconds)", type="number", default=2, min=1, max=6, step=0.5),
                 p_aspect("square"), p_animation_format()],
@@ -324,7 +340,8 @@ _SPECS: List[ConversionSpec] = [
     ConversionSpec(
         id="video_to_image", source="video", target="image", category="generative",
         title="Video → Image", description="Extract and edit a frame, or let the app pick the sharpest frame.",
-        run=by_mode({"poster": gen.video_poster, "ai_poster": gen.video_poster}, video_to_image),
+        run=by_mode({"poster": gen.video_poster, "ai_poster": gen.video_poster, "ai_restyle": gen.ai_restyle_frame},
+                    video_to_image),
         accepted_extensions=VIDEO_EXTENSIONS,
         modes=[ModeSpec("frame", "Pick a frame", "Exact frame at a timestamp + edits.", engines=("ffmpeg", "pillow")),
                ModeSpec("best_frame", "Best frame (auto)", "Samples 12 frames and keeps the sharpest.",
@@ -332,11 +349,15 @@ _SPECS: List[ConversionSpec] = [
                ModeSpec("poster", "Poster / thumbnail", "Strongest frame + title band (CPU).",
                         engines=("ffmpeg", "pillow")),
                ModeSpec("ai_poster", "AI poster", "AI describes the video's best frame and paints a poster.",
-                        engines=("ai_caption", "ai_image", "ffmpeg", "pillow"))],
+                        engines=("ai_caption", "ai_image", "ffmpeg", "pillow")),
+               ModeSpec("ai_restyle", "AI restyle (img2img)",
+                        "The sharpest frame repainted by Stable Diffusion in the style you describe.",
+                        engines=("ai_img2img", "ffmpeg", "pillow"))],
         params=[
             ParamSpec("timestamp", "Timestamp (seconds)", type="number", default=0.0, min=0, max=86400, step=0.04,
                       modes=("frame",), help="Use the preview player to find the moment you want."),
             ParamSpec("title", "Poster title", type="text", default="", max_length=120, modes=("poster", "ai_poster")),
+            P_STYLE_PROMPT, P_STRENGTH,
             ParamSpec("rotate", "Rotate", default="0",
                       choices=[("0", "None"), ("90", "90° right"), ("180", "180°"), ("270", "90° left")]),
             ParamSpec("crop_left", "Crop left (%)", type="number", default=0, min=0, max=45, step=1),
@@ -356,7 +377,11 @@ _SPECS: List[ConversionSpec] = [
         title="Video → Animation", description="Turn a moment of a video into an optimised GIF or animated WebP.",
         run=gen.video_to_animation, accepted_extensions=VIDEO_EXTENSIONS,
         modes=[ModeSpec("clip", "Clip to animation", "Palette-optimised GIF / WebP with effects (CPU).",
-                        engines=("ffmpeg",))],
+                        engines=("ffmpeg",)),
+               ModeSpec("ai_stylize", "AI video-to-animation (AnimateDiff)",
+                        "Generative restyling of motion needs a GPU animation model; no free hosted provider exists, "
+                        "so it is not offered yet. The CPU mode's effects (cartoon, vintage, B&W) are available.",
+                        coming_soon=True)],
         params=[ParamSpec("start", "Start (seconds)", type="number", default=0, min=0, max=86400, step=0.1,
                           help="Use the preview player to find the moment."),
                 ParamSpec("duration", "Length (seconds)", type="number", default=4, min=0.5, max=MAX_ANIMATION_SECONDS,
@@ -372,13 +397,18 @@ _SPECS: List[ConversionSpec] = [
     ConversionSpec(
         id="animation_to_image", source="animation", target="image", category="generative",
         title="Animation → Image", description="The sharpest frame, a titled poster, or a contact sheet.",
-        run=gen.animation_to_image, accepted_extensions=ANIMATION_EXTENSIONS,
+        run=by_mode({"ai_restyle": gen.ai_restyle_frame}, gen.animation_to_image),
+        accepted_extensions=ANIMATION_EXTENSIONS,
         modes=[ModeSpec("best_frame", "Best frame", "Sharpest frame picked automatically (CPU).",
                         engines=("ffmpeg", "pillow")),
                ModeSpec("poster", "Poster", "Best frame with a title band (CPU).", engines=("ffmpeg", "pillow")),
                ModeSpec("contact_sheet", "Contact sheet", "Grid of evenly sampled frames (CPU).",
-                        engines=("ffmpeg", "pillow"))],
+                        engines=("ffmpeg", "pillow")),
+               ModeSpec("ai_restyle", "AI restyle (img2img)",
+                        "The sharpest frame repainted by Stable Diffusion in the style you describe.",
+                        engines=("ai_img2img", "ffmpeg", "pillow"))],
         params=[ParamSpec("title", "Title", type="text", default="", max_length=120, modes=("poster",)),
+                P_STYLE_PROMPT, P_STRENGTH,
                 ParamSpec("frames", "Frames", type="number", default=12, min=4, max=24, step=1,
                           modes=("contact_sheet",)),
                 ParamSpec("columns", "Columns", type="number", default=4, min=2, max=6, step=1,
@@ -390,7 +420,10 @@ _SPECS: List[ConversionSpec] = [
         title="Animation → Video", description="Convert a GIF/WebP into a shareable MP4 or WebM, looped and smoothed.",
         run=gen.animation_to_video, accepted_extensions=ANIMATION_EXTENSIONS,
         modes=[ModeSpec("convert", "Convert", "Frame-exact conversion with optional motion smoothing (CPU).",
-                        engines=("ffmpeg", "pillow"))],
+                        engines=("ffmpeg", "pillow")),
+               ModeSpec("ai_interpolate", "AI frame interpolation (RIFE)",
+                        "Needs a GPU interpolation model; no free hosted provider exists, so it is not offered yet. "
+                        "The CPU mode's motion smoothing (FFmpeg minterpolate) is available.", coming_soon=True)],
         params=[ParamSpec("loops", "Repeat", type="number", default=3, min=1, max=20, step=1),
                 ParamSpec("width", "Width (px, 0 = original)", type="number", default=0, min=0, max=1920, step=10),
                 ParamSpec("smooth", "Motion smoothing (interpolate to 30 fps)", type="boolean", default=False),
@@ -419,19 +452,34 @@ def get_spec(conversion_id: str) -> Optional[ConversionSpec]:
     return REGISTRY.get((conversion_id or "").strip())
 
 
+def mode_kind(mode: ModeSpec) -> str:
+    """ai_provider = hosted generative/vision model; ai_local = neural model on this server's CPU
+    (Whisper, Kokoro); cpu = deterministic processing (FFmpeg, Pillow, Tesseract)."""
+    if any(e in AI_ENGINES for e in mode.engines) or mode.id.startswith("ai"):
+        return "ai_provider"
+    if any(e in LOCAL_AI_ENGINES for e in mode.engines):
+        return "ai_local"
+    return "cpu"
+
+
 def mode_status(mode: ModeSpec) -> Dict[str, Any]:
-    reason = None if mode.coming_soon else unavailable_reason(mode.engines)
-    status = "coming_soon" if mode.coming_soon else ("available" if reason is None else "unavailable")
+    if mode.coming_soon:
+        status, reason = "coming_soon", None
+    else:
+        status, reason = engines_state(mode.engines)
     return {"id": mode.id, "label": mode.label, "description": mode.description, "status": status,
-            "reason": reason, "engines": list(mode.engines)}
+            "reason": reason, "engines": list(mode.engines), "kind": mode_kind(mode)}
 
 
 def describe(spec: ConversionSpec) -> Dict[str, Any]:
     modes = [mode_status(m) for m in spec.modes]
     if not spec.implemented:
         status = "coming_soon"
-    elif any(m["status"] == "available" for m in modes):
+    elif any(m["status"] in ("available", "temporarily_unavailable") for m in modes):
         status = "available"
+    elif modes and all(m["status"] in ("needs_config", "coming_soon") for m in modes) and any(
+            m["status"] == "needs_config" for m in modes):
+        status = "needs_config"
     else:
         status = "unavailable"
     return {
@@ -473,7 +521,8 @@ def validate_job_request(spec: ConversionSpec, params: Dict[str, Any], inputs: L
     if spec.validator:
         spec.validator(cleaned, inputs)
 
-    reason = unavailable_reason(mode.engines)
-    if reason:
+    state, reason = engines_state(mode.engines)
+    if state in ("unavailable", "needs_config"):
         raise LookupError(reason)
+    # "temporarily_unavailable" (a recent provider failure) may be retried; failures are reported honestly.
     return cleaned

@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # A running job whose heartbeat is older than this is considered abandoned.
     JOB_STALE_AFTER_SECONDS: int = 180
     JOB_MAX_ATTEMPTS: int = 2
+    # Run each job in a child process with a memory watchdog (recommended on small servers).
+    JOB_ISOLATION: bool = False
+    # Watchdog limit for one job's process tree (MB, 0 = off). Render Free has 512 MB in total.
+    JOB_MEMORY_LIMIT_MB: int = 400
 
     # ---- FFmpeg ----
     FFMPEG_TIMEOUT_SECONDS: int = 600
@@ -107,6 +111,9 @@ class Settings(BaseSettings):
     CLOUDFLARE_API_TOKEN: str = ""
     CLOUDFLARE_IMAGE_MODEL: str = "@cf/black-forest-labs/flux-1-schnell"
     CLOUDFLARE_CAPTION_MODEL: str = "@cf/llava-hf/llava-1.5-7b-hf"
+    CLOUDFLARE_IMG2IMG_MODEL: str = "@cf/runwayml/stable-diffusion-v1-5-img2img"
+    # After a provider failure (5xx / 429 / network) AI modes show "temporarily unavailable" this long.
+    AI_FAILURE_COOLDOWN_SECONDS: int = 180
     HF_API_TOKEN: str = ""
     HF_INFERENCE_BASE_URL: str = "https://router.huggingface.co/hf-inference/models"
     HF_IMAGE_MODEL: str = "black-forest-labs/FLUX.1-schnell"
@@ -117,6 +124,7 @@ class Settings(BaseSettings):
 
     # ---- Input limits (protect a small CPU server) ----
     MAX_TEXT_CHARS: int = 5000
+    MAX_VIDEO_SCENES: int = 10                     # text-to-video scenes (one per sentence); 6 on 512 MB servers
     MAX_TRANSCRIBE_SECONDS: int = 1800             # 30 minutes of audio/video
     MAX_IMAGE_PIXELS: int = 40_000_000
 

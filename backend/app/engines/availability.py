@@ -1,6 +1,6 @@
 """Runtime availability of each processing engine on *this* server (cached briefly)."""
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 from app.adapters.ai_provider import ai_provider
 from app.adapters.ffmpeg_adapter import ffmpeg_adapter
@@ -16,7 +16,11 @@ ENGINE_LABELS = {
     "pillow": "Pillow (images)",
     "ai_image": "Hosted AI image generation",
     "ai_caption": "Hosted AI image description",
+    "ai_img2img": "Hosted AI image restyle (img2img)",
 }
+
+AI_ENGINES = ("ai_image", "ai_caption", "ai_img2img")
+LOCAL_AI_ENGINES = ("whisper", "kokoro")
 
 _CACHE_SECONDS = 30.0
 _cache: Dict[str, Optional[str]] = {}
@@ -43,6 +47,7 @@ _CHECKS = {
     "pillow": _check_pillow,
     "ai_image": ai_provider.availability,
     "ai_caption": ai_provider.availability,
+    "ai_img2img": ai_provider.img2img_availability,
 }
 
 
@@ -62,6 +67,32 @@ def unavailable_reason(engines) -> Optional[str]:
         if reason:
             return reason
     return None
+
+
+def engine_state(name: str) -> Tuple[str, Optional[str]]:
+    """(state, reason): available | needs_config | temporarily_unavailable | unavailable."""
+    reason = engine_status().get(name, f"Unknown engine '{name}'.")
+    if name in AI_ENGINES:
+        if reason:
+            return "needs_config", reason
+        issue = ai_provider.runtime_issue()
+        if issue:
+            return "temporarily_unavailable", issue
+        return "available", None
+    return ("unavailable", reason) if reason else ("available", None)
+
+
+_SEVERITY = {"available": 0, "temporarily_unavailable": 1, "needs_config": 2, "unavailable": 3}
+
+
+def engines_state(engines) -> Tuple[str, Optional[str]]:
+    """Worst state across a mode's engines."""
+    state, reason = "available", None
+    for name in engines:
+        s, r = engine_state(name)
+        if _SEVERITY[s] > _SEVERITY[state]:
+            state, reason = s, r
+    return state, reason
 
 
 def reset_cache() -> None:

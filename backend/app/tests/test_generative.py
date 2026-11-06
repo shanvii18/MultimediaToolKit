@@ -167,7 +167,9 @@ def test_huggingface_provider_request_format(monkeypatch):
 
     def handler(request):
         seen["url"] = str(request.url)
-        return httpx.Response(200, content=b"\x89PNG\r\n\x1a\nfake", headers={"content-type": "image/png"})
+        buf = io.BytesIO()
+        Image.new("RGB", (8, 8), "red").save(buf, "PNG")
+        return httpx.Response(200, content=buf.getvalue(), headers={"content-type": "image/png"})
 
     monkeypatch.setattr(settings, "AI_PROVIDER", "huggingface")
     monkeypatch.setattr(settings, "HF_API_TOKEN", "hf_x")
@@ -357,3 +359,50 @@ def test_animation_to_text_ai_describe(worker, media, ai_mock):
 def test_animation_to_audio_ai_narrate(worker, media, ai_mock):
     outs = ok(run(worker, "animation_to_audio", [upload(media / "anim.gif")], mode="narrate", audio_format="wav"))
     assert fetch(outs["audio_wav"])[:4] == b"RIFF"
+
+
+def test_ai_provider_rejects_corrupt_image_and_reports_temporary_outage(monkeypatch):
+    from app.engines.availability import engine_state
+    monkeypatch.setattr(settings, "AI_PROVIDER", "cloudflare")
+    monkeypatch.setattr(settings, "CLOUDFLARE_ACCOUNT_ID", "acc")
+    monkeypatch.setattr(settings, "CLOUDFLARE_API_TOKEN", "tok")
+    ai_provider._record_success()
+    monkeypatch.setattr(ai_provider, "_transport", httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"result": {"image": base64.b64encode(b"not an image").decode()}})))
+    with pytest.raises(AIProviderError, match="not a valid image"):
+        ai_provider.generate_image("cat")
+    assert engine_state("ai_image") == ("available", None)          # bad payload is not an outage
+    monkeypatch.setattr(ai_provider, "_transport", httpx.MockTransport(lambda r: httpx.Response(503, text="busy")))
+    with pytest.raises(AIProviderError):
+        ai_provider.generate_image("cat")
+    state, reason = engine_state("ai_image")
+    assert state == "temporarily_unavailable" and "503" in reason
+    ai_provider._record_success()
+
+
+def test_cloudflare_img2img_request_format(monkeypatch):
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content)
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 64), "blue").save(buf, "PNG")
+        return httpx.Response(200, content=buf.getvalue(), headers={"content-type": "image/png"})
+
+    monkeypatch.setattr(settings, "AI_PROVIDER", "cloudflare")
+    monkeypatch.setattr(settings, "CLOUDFLARE_ACCOUNT_ID", "acc")
+    monkeypatch.setattr(settings, "CLOUDFLARE_API_TOKEN", "tok")
+    monkeypatch.setattr(ai_provider, "_transport", httpx.MockTransport(handler))
+    src = io.BytesIO()
+    Image.new("RGB", (1200, 800), "green").save(src, "PNG")
+    out = ai_provider.transform_image(src.getvalue(), "watercolor", strength=0.5)
+    assert Image.open(io.BytesIO(out)).size == (64, 64)
+    assert seen["url"].endswith("/accounts/acc/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img")
+    assert seen["body"]["prompt"] == "watercolor" and seen["body"]["strength"] == 0.5
+    sent = Image.open(io.BytesIO(bytes(seen["body"]["image"])))
+    assert max(sent.size) <= 512                                      # downscaled before upload
+    monkeypatch.setattr(settings, "AI_PROVIDER", "huggingface")
+    monkeypatch.setattr(settings, "HF_API_TOKEN", "hf_x")
+    with pytest.raises(AIProviderError, match="cloudflare"):
+        ai_provider.transform_image(src.getvalue(), "watercolor")

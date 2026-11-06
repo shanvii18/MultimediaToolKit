@@ -99,8 +99,9 @@ def _scene_chunks(text: str) -> List[str]:
                 chunks.append(piece)
     if not chunks:
         raise ConversionError("There is no text to turn into scenes.", code="NO_TEXT")
-    if len(chunks) > MAX_SCENES:
-        raise ConversionError(f"The script is too long: {len(chunks)} scenes (max {MAX_SCENES}). "
+    max_scenes = min(MAX_SCENES, settings.MAX_VIDEO_SCENES)
+    if len(chunks) > max_scenes:
+        raise ConversionError(f"The script is too long for this server: {len(chunks)} scenes (max {max_scenes}). "
                               "Shorten it or split it into several videos.", code="INPUT_TOO_LONG")
     return chunks
 
@@ -637,3 +638,38 @@ def video_poster(ctx: JobContext) -> None:
         meta = {"engine": "Best frame + Pillow poster title", "timestamp_seconds": ts, "ai_generated": False}
     poster = gfx.add_title(art, title)
     _save_image_output(ctx, poster, stem, "poster", meta)
+
+
+# ======================================================================
+# VIDEO / ANIMATION -> IMAGE : AI restyle (img2img)
+# ======================================================================
+def ai_restyle_frame(ctx: JobContext) -> None:
+    """Pick the sharpest frame (CPU), then repaint it with the hosted img2img model in the requested style."""
+    source = ctx.input_asset(0)
+    path = ctx.input_path(0)
+    stem = stem_of(source.filename, "frame")
+    ctx.progress(15, "Choosing the sharpest frame")
+    frames = sample_frames(ctx, path, 12)
+    score, ts, best = max(((sharpness_score(f), t, f) for t, f in frames), key=lambda x: x[0])
+    style = (ctx.params.get("style_prompt") or "").strip()
+    if not style:
+        raise ConversionError("Describe the style you want (for example 'watercolor painting').", code="INVALID_INPUT")
+    strength = float(ctx.params.get("strength", 0.6))
+    buf = io.BytesIO()
+    best.convert("RGB").save(buf, "PNG")
+    ctx.progress(40, "Restyling with AI")
+    try:
+        data = ai_provider.transform_image(buf.getvalue(), f"{style}, high quality, detailed", strength=strength)
+    except AIProviderError as e:
+        raise ConversionError(str(e), code="AI_PROVIDER_ERROR")
+    raw = ctx.tmp("restyled.png")
+    with open(raw, "wb") as f:
+        f.write(data)
+    try:
+        img = open_image(raw).convert("RGB")
+    except ValueError:
+        raise ConversionError("The AI provider returned data that is not a valid image.", code="AI_PROVIDER_ERROR")
+    ctx.progress(90, "Saving image")
+    _save_image_output(ctx, img, stem, "ai_restyled", {
+        "engine": f"AI provider: {ai_provider.provider} ({settings.CLOUDFLARE_IMG2IMG_MODEL})",
+        "style_prompt": style, "strength": strength, "source_timestamp_seconds": ts, "ai_generated": True})

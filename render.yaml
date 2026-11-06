@@ -65,6 +65,14 @@ services:
         value: "2"
       - key: TTS_CPU_THREADS
         value: "2"
+      # Each conversion runs in its own process with a memory watchdog, so a heavy job is stopped
+      # (and reported as OUT_OF_MEMORY) instead of crashing the API ("Failed to fetch" for everyone).
+      - key: JOB_ISOLATION
+        value: "true"
+      - key: JOB_MEMORY_LIMIT_MB
+        value: "400"
+      - key: MAX_VIDEO_SCENES
+        value: "6"
       # Optional AI modes: set AI_PROVIDER=cloudflare (+ CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)
       # or AI_PROVIDER=huggingface (+ HF_API_TOKEN) in the dashboard. CPU modes work without it.
       - key: AI_PROVIDER

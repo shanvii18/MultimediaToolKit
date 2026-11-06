@@ -2,6 +2,7 @@ import os
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Header
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.core.database import get_db
@@ -226,7 +227,16 @@ def create_job(
     payload: JobCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ):
+    key = (idempotency_key or "").strip()[:64] or None
+    if key:
+        # A retried submission (e.g. the first response was lost on a flaky network) returns the
+        # job created by the first attempt instead of starting a duplicate conversion.
+        existing = (db.query(Job).options(joinedload(Job.outputs).joinedload(JobOutput.asset))
+                    .filter(Job.user_id == user.id, Job.idempotency_key == key).first())
+        if existing:
+            return existing
     if not payload.tool or not payload.tool.strip():
         raise HTTPException(status_code=400, detail="Tool parameter cannot be empty.")
 
@@ -262,10 +272,16 @@ def create_job(
         input_asset_ids=payload.input_asset_ids,
         params_json=cleaned_params,
         status="queued",
-        progress=0
+        progress=0,
+        idempotency_key=key,
     )
     db.add(job)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two retries raced: the other one won, return its job.
+        db.rollback()
+        return db.query(Job).filter(Job.user_id == user.id, Job.idempotency_key == key).one()
     db.refresh(job)
 
     # The job is now durably queued in the database; a worker (embedded or standalone)

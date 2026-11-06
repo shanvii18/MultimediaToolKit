@@ -116,3 +116,42 @@ def test_free_models_respects_keep_models_loaded(monkeypatch):
     monkeypatch.setattr(settings, "KEEP_MODELS_LOADED", False)
     free_models()
     assert tts_adapter._kokoro is None
+
+
+def _queued_job(tool="text_to_image", params=None):
+    from app.models.entities import Job
+    db = SessionLocal()
+    try:
+        job = Job(tool=tool, status="running", progress=10,
+                  params_json=params or {"mode": "poster", "text": "Isolated", "aspect": "square", "style": "auto",
+                                         "image_format": "png"}, input_asset_ids=[])
+        db.add(job); db.commit()
+        return job.id
+    finally:
+        db.close()
+
+
+def _job(job_id):
+    from app.models.entities import Job
+    db = SessionLocal()
+    try:
+        return db.query(Job).filter(Job.id == job_id).one()
+    finally:
+        db.close()
+
+
+def test_isolated_job_runs_in_child_process():
+    from app.worker.isolated import run_job_isolated
+    job_id = _queued_job()
+    result = run_job_isolated(job_id, memory_limit_mb=0)
+    assert result["exitcode"] == 0, result
+    assert _job(job_id).status == "succeeded"
+
+
+def test_isolated_job_over_memory_limit_is_stopped_and_failed_cleanly():
+    from app.worker.isolated import run_job_isolated
+    job_id = _queued_job()
+    result = run_job_isolated(job_id, memory_limit_mb=1)          # any real process exceeds 1 MB
+    assert result["killed_for_memory"] is True
+    job = _job(job_id)
+    assert job.status == "failed" and job.error_code == "OUT_OF_MEMORY" and "memory" in job.error_message

@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertCircle, CheckCircle2, Clock, Download, Loader2, RefreshCw, Repeat } from "lucide-react";
-import { ApiClient } from "@/services/apiClient";
+import { ApiClient, describeError } from "@/services/apiClient";
 import { Conversion, Job } from "@/types";
 import { formatBytes } from "@/components/convert/ConvertUi";
 
@@ -34,7 +34,7 @@ export default function ConversionHistoryPage() {
       setJobs(await ApiClient.listJobs());
       setError(null);
     } catch (err: any) {
-      setError(err.message || "Could not load your history.");
+      setError(describeError(err));
     } finally {
       setRefreshing(false);
     }

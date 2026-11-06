@@ -20,7 +20,7 @@ import {
   Compass,
   Info,
 } from "lucide-react";
-import { ApiClient } from "@/services/apiClient";
+import { ApiClient, describeError } from "@/services/apiClient";
 import { getModuleBySlug } from "@/services/modulesCatalog";
 import { Job, Asset } from "@/types";
 
@@ -105,7 +105,7 @@ function WorkspaceStudioContent() {
       });
       setActiveJob(job);
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to submit storyboard task.");
+      setErrorMsg(describeError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -134,7 +134,7 @@ function WorkspaceStudioContent() {
       const asset = await ApiClient.uploadMedia(file);
       setUploadedAsset(asset);
     } catch (err: any) {
-      setErrorMsg(err.message || "Upload failed.");
+      setErrorMsg(describeError(err));
     } finally {
       setUploading(false);
     }
@@ -154,7 +154,7 @@ function WorkspaceStudioContent() {
       });
       setActiveJob(job);
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to submit extraction task.");
+      setErrorMsg(describeError(err));
     } finally {
       setIsSubmitting(false);
     }
