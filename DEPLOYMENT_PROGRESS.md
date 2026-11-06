@@ -9,9 +9,9 @@ private folder outside the repository.
 |---|---|
 | Old Render PostgreSQL (`mtk-postgres`, PG 18.6, Free, expires **2026-11-09 11:55 UTC**) | Backed up, verified, untouched |
 | Neon (PG 18.6, us-west-2 Oregon, pooled) | Data migrated, schema upgraded to `0002_job_progress_message`, verified |
-| Render `mtk-backend` (Free, Oregon, Docker, auto-deploys `main`) | New environment **staged** (no deploy triggered). Applies on next deploy |
+| Render `mtk-backend` (Free, Oregon, Docker, auto-deploys `main`) | **Live** on Neon (PR #1 merged as `c324c3b`) |
 | Vercel `multimedia-tool-kit` (root `frontend`, prod branch `main`) | `NEXT_PUBLIC_API_URL` = `https://mtk-backend.onrender.com` (verified in live bundle). No change needed |
-| PR #1 | Ready. **Not merged** (waiting for owner approval) |
+| PR #1 | **Merged** 2026-11-06 |
 
 ## Completed
 
@@ -77,13 +77,23 @@ audio/video→text (~360 MB). Before tuning, the peaks were up to 970 MB.
 - **AI modes** (12 of them) need a Cloudflare or Hugging Face key and are reported as "not configured".
   All 20 conversions have a working CPU mode.
 
+## Live verification (2026-11-06, deployed `c324c3b`)
+
+Tested against https://mtk-backend.onrender.com from outside, using the real owner access key:
+- `/health` 200; no key / wrong key -> 401; owner key -> `/me` 200 (user stored in Neon).
+- CORS: the Vercel origin is allowed; other origins are rejected (400).
+- Frontend: `/`, `/convert`, `/convert/[id]`, `/login`, `/jobs`, `/projects`, `/modules`, `/workspace` all return 200.
+- Upload of 5 sample files (`demo-files/`) worked.
+- **19 of 20 conversions succeeded live, with real downloadable outputs** (4–180 s each on Render's free CPU).
+- **text_to_video failed live**: Render reported `oomKilled` (512Mi). The fix was committed after the merge
+  (`5f1f889`): narrate first, release the model, then render, and return freed memory to the OS. Local peak
+  dropped from 446 MB to 256 MB. It needs one more merge to `main`, then a live re-test of text_to_video.
+
 ## Pending / needs owner approval
 
-- [ ] **Merge PR #1 into `main`** (owner approval required). This triggers Render (backend) and Vercel
-      (frontend) production deploys, and Render then uses the staged Neon configuration.
-- [ ] After deploy: live verification (health, CORS, auth, upload, conversion, download).
-- [ ] Create the owner's invite access key (`python -m app.cli invite <email>`) against Neon.
-- [ ] Optional: delete the old Render database after the cutover is verified (it expires anyway on 2026-11-09).
+- [x] PR #1 merged; live verification done (above). Owner invite key created (kept privately).
+- [ ] Merge the OOM fix (`5f1f889`) to `main` and re-test text_to_video live.
+- [ ] Old Render database: nothing to do. Render deletes it automatically on 2026-11-09, and the verified backup is kept.
 
 ## Rollback
 
