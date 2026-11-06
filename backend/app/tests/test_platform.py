@@ -102,3 +102,17 @@ def test_ffmpeg_threads_cap_still_produces_output(monkeypatch, tmp_path):
     ffmpeg_adapter.run_ffmpeg(["-f", "lavfi", "-i", "testsrc=size=320x240:rate=10", "-t", "1",
                                "-c:v", "libx264", "-pix_fmt", "yuv420p", out], out)
     assert (tmp_path / "t.mp4").stat().st_size > 0
+
+
+def test_free_models_respects_keep_models_loaded(monkeypatch):
+    from app.adapters.tts_adapter import tts_adapter
+    from app.core.config import settings
+    from app.engines.pipelines.common import free_models
+    sentinel = object()
+    monkeypatch.setattr(settings, "KEEP_MODELS_LOADED", True)
+    tts_adapter._kokoro = sentinel
+    free_models()
+    assert tts_adapter._kokoro is sentinel
+    monkeypatch.setattr(settings, "KEEP_MODELS_LOADED", False)
+    free_models()
+    assert tts_adapter._kokoro is None

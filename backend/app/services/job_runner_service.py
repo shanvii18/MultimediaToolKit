@@ -42,6 +42,24 @@ def release_models() -> None:
     whisper_adapter._model_size = None
     tts_adapter._kokoro = None
     gc.collect()
+    _trim_heap()
+
+
+def _trim_heap() -> None:
+    """glibc keeps freed memory in its arenas; hand it back so the next step (e.g. FFmpeg) has room."""
+    import sys
+    if sys.platform.startswith("linux"):
+        try:
+            import ctypes
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:  # pragma: no cover - non-glibc libc
+            pass
+
+
+def free_models_if_configured() -> None:
+    """Called by pipelines between a model step and a heavy FFmpeg step on small-RAM servers."""
+    if not settings.KEEP_MODELS_LOADED:
+        release_models()
 
 
 class JobRunnerService:

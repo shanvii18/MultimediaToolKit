@@ -12,6 +12,12 @@ from app.core.config import settings
 from app.engines.base import ConversionError, JobContext
 
 
+def free_models() -> None:
+    """Release Whisper/Kokoro before FFmpeg work when KEEP_MODELS_LOADED=false (512 MB servers)."""
+    from app.services.job_runner_service import free_models_if_configured
+    free_models_if_configured()
+
+
 # ---------------- speech recognition ----------------
 def transcribe_media(ctx: JobContext, media_path: str, start: float, end: float,
                      require_audio_message: str = "This file has no audio track to transcribe.") -> Transcript:
@@ -34,6 +40,7 @@ def transcribe_media(ctx: JobContext, media_path: str, start: float, end: float,
         wav, model_size=model, language=ctx.params.get("language", "auto"),
         progress=ctx.sub_progress(start + 5, end, "Transcribing speech"),
     )
+    free_models()
     return transcript
 
 
@@ -77,6 +84,7 @@ def speak_text(ctx: JobContext, text: str, stem: str, start: float, end: float,
         text, wav, voice=voice, speed=speed,
         progress=ctx.sub_progress(start + 3, end - 5, "Synthesizing speech"),
     )
+    free_models()
     spec = AUDIO_FORMATS[fmt]
     if fmt == "wav":
         final = wav

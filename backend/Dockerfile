@@ -3,7 +3,8 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MODEL_CACHE_DIR=/app/models \
-    WORK_DIR=/tmp/mtk-work
+    WORK_DIR=/tmp/mtk-work \
+    MALLOC_ARENA_MAX=2
 
 WORKDIR /app
 

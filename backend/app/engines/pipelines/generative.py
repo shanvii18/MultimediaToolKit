@@ -20,7 +20,7 @@ from app.adapters.whisper_adapter import Segment, Transcript, to_srt
 from app.core.config import settings
 from app.engines.availability import engine_status
 from app.engines.base import ConversionError, JobContext, stem_of
-from app.engines.pipelines.common import sample_frames, speak_text, transcribe_media
+from app.engines.pipelines.common import free_models, sample_frames, speak_text, transcribe_media
 
 MAX_SCENES = 10
 MAX_AUDIO_VIDEO_SECONDS = 600
@@ -138,8 +138,11 @@ def text_to_video(ctx: JobContext) -> None:
 
     clips, segments, t = [], [], 0.0
     span = 80.0 / len(scenes)
+    # Pass 1: visuals + narration (model in memory). Pass 2: FFmpeg rendering (model released first),
+    # so the TTS model and the video encoder are never resident at the same time on a 512 MB server.
+    prepared = []
     for i, scene in enumerate(scenes):
-        base = 8 + i * span
+        base = 8 + i * span * 0.5
         ctx.progress(base, f"Scene {i + 1}/{len(scenes)}: visuals")
         if ctx.mode == "ai_scenes":
             prompt = f"{scene} -- cinematic still, detailed, {style if style != 'auto' else 'film'} style"
@@ -149,16 +152,21 @@ def text_to_video(ctx: JobContext) -> None:
             img = gfx.render_card(scene, size=size, style=style, subtitle=f"{i + 1} / {len(scenes)}")
         img_path = ctx.tmp(f"scene_{i:02d}.png")
         img.save(img_path)
+        del img
 
         audio_path = ctx.tmp(f"scene_{i:02d}.wav")
         if narrate:
-            ctx.progress(base + span * 0.4, f"Scene {i + 1}/{len(scenes)}: narration")
+            ctx.progress(base + span * 0.25, f"Scene {i + 1}/{len(scenes)}: narration")
             seconds = tts_adapter.synthesize_to_wav(scene, audio_path, voice=ctx.params.get("voice", "af_heart"),
                                                     speed=float(ctx.params.get("speed", 1.0))) + 0.5
         else:
             seconds = max(3.0, len(scene.split()) * 0.42)
             motion.silence_wav(audio_path, seconds)
-        ctx.progress(base + span * 0.7, f"Scene {i + 1}/{len(scenes)}: rendering")
+        prepared.append((scene, img_path, audio_path, seconds))
+
+    free_models()
+    for i, (scene, img_path, audio_path, seconds) in enumerate(prepared):
+        ctx.progress(48 + i * span * 0.5, f"Scene {i + 1}/{len(scenes)}: rendering")
         clip = ctx.tmp(f"clip_{i:02d}.mp4")
         motion.ken_burns(img_path, clip, seconds, size=size, motion=motions[i % len(motions)], audio_path=audio_path)
         clips.append(clip)
@@ -429,6 +437,7 @@ def image_to_video(ctx: JobContext) -> None:
         ctx.add_text_output(description + "\n", f"{stem}_description.txt", "description_txt",
                             {"preview_text": description, "engine": f"AI provider: {ai_provider.provider}"})
 
+    free_models()
     ctx.progress(60, "Rendering camera motion")
     out = ctx.tmp("video.mp4")
     motion.ken_burns(src, out, seconds, size=size, motion=ctx.params.get("motion", "zoom_in"), audio_path=audio)
