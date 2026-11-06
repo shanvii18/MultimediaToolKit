@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Secret for signing short-lived download URLs. Required outside development.
     SIGNING_SECRET: str = ""
     DOWNLOAD_URL_TTL_SECONDS: int = 3600
+    # Public sign-up / sign-in abuse limits (per client IP / per email, in-memory)
+    SIGNUP_RATE_LIMIT_PER_HOUR: int = 10
+    LOGIN_RATE_LIMIT_PER_15_MIN: int = 10
     # Used only to print invite links from the CLI.
     FRONTEND_URL: str = "http://localhost:3000"
 

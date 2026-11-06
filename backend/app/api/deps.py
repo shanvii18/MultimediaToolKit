@@ -28,7 +28,7 @@ def resolve_user(db: Session, authorization: Optional[str], x_access_key: Option
     if raw_key:
         user = authenticate_access_key(db, raw_key)
         if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or revoked access key.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Your session has expired. Please sign in again.")
         return user
     if settings.effective_auth_mode == AUTH_MODE_DEV_OPEN:
         return get_or_create_dev_user(db)
@@ -44,7 +44,7 @@ def get_current_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Access key required. MultimediaToolKit is invite-only: open your personal invite link.",
+            detail="Please sign in to continue.",
         )
     return user
 

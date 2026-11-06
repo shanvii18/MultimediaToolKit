@@ -6,7 +6,7 @@ Convert anything into anything: **5 formats (Text, Image, Audio, Video, Animatio
 - **Backend:** FastAPI, SQLAlchemy 2, Alembic, PostgreSQL (SQLite for local dev), a durable DB-backed job queue (optional Redis wake-ups), and S3-compatible storage
 - **Engines:** FFmpeg, faster-whisper, Kokoro-82M TTS, Tesseract OCR and Pillow, all on CPU. An optional hosted AI provider (Cloudflare Workers AI or Hugging Face) handles generative image models and image description.
 
-**Live demo:** https://multimedia-tool-kit.vercel.app (invite-only) · **API:** https://mtk-backend.onrender.com/health · **Presenting?** See [DEMO_GUIDE.md](DEMO_GUIDE.md)
+**Live demo:** https://multimedia-tool-kit.vercel.app (free account: sign up with email and password) · **API:** https://mtk-backend.onrender.com/health · **Presenting?** See [DEMO_GUIDE.md](DEMO_GUIDE.md)
 
 ---
 
@@ -42,7 +42,9 @@ The live status of every conversion and mode on a given server is available at `
 ## Features
 - **Conversion workspace** (`/convert/[id]`), generated from the backend registry: drag-and-drop upload, local preview (scrub a video to pick a frame), mode and settings forms, live progress with step messages, and audio, image and text previews with downloads.
 - **Conversion history** (`/jobs`) with filters, errors and all output files. **Projects and media library** (`/projects`) with search, type filter, previews and delete.
-- **Invite-only accounts:** personal access keys (hashed), per-user data isolation, short-lived signed download links, `/login`.
+- **Public accounts:** anyone can sign up with an email and password (scrypt-hashed). Sign-in issues a random,
+  expiring session token, stored hashed. Sign-up and sign-in are rate-limited. Every user sees only their own
+  files, jobs and history, and downloads use short-lived signed links.
 - **Reliability:** durable job queue with leases, heartbeats and automatic recovery; FFmpeg timeouts; honest error codes (`NO_SPEECH`, `NO_AUDIO`, `INPUT_TOO_LONG`, `AI_PROVIDER_ERROR`, …); failed jobs leave no partial files behind.
 - **Security:** server-derived MIME types, `nosniff` and sandbox CSP on downloads, upload allow-list and size cap, path-traversal-safe storage keys, and refusal to start in production with an unsafe configuration.
 
@@ -96,7 +98,7 @@ All settings are environment variables; see [`.env.example`](.env.example). The 
 
 | Variable | Purpose |
 |---|---|
-| `ENVIRONMENT` | `development` or `production` (production enforces access keys, PostgreSQL and a signing secret) |
+| `ENVIRONMENT` | `development` or `production` (production requires sign-in, PostgreSQL and a signing secret) |
 | `DATABASE_URL` | PostgreSQL URL (use a non-expiring one, for example Neon free tier) |
 | `SIGNING_SECRET` | ≥ 32 random characters, used for signed download links |
 | `ALLOWED_ORIGINS` | Your frontend origin(s) |
@@ -111,12 +113,17 @@ All settings are environment variables; see [`.env.example`](.env.example). The 
 
 AI usage counts against your provider account. Outputs are marked `ai_generated` in their metadata.
 
-### Invite users
+### Accounts
+Users create their own accounts on the website (`/login` → **Create account**). API:
+`POST /api/v1/auth/signup`, `POST /api/v1/auth/login` (both return a bearer token), and `POST /api/v1/auth/logout`.
+Every other `/api/v1` route requires `Authorization: Bearer <token>`.
+
+Admin helpers:
 ```bash
 cd backend
-python -m app.cli invite --email friend@example.com     # prints a one-time invite link
 python -m app.cli list-users
-python -m app.cli revoke --email friend@example.com
+python -m app.cli set-password --email owner@example.com   # give an existing account a password
+python -m app.cli revoke --email someone@example.com       # sign a user out everywhere
 ```
 
 ## Deployment (all free tiers)

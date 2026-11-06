@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -72,9 +72,34 @@ def authenticate_access_key(db: Session, raw_key: str) -> Optional[User]:
     )
     if not key:
         return None
+    if key.expires_at is not None and key.expires_at <= datetime.utcnow():
+        return None
     key.last_used_at = datetime.utcnow()
     db.commit()
     return db.query(User).filter(User.id == key.user_id).first()
+
+
+SESSION_LABEL = "session"
+SESSION_TTL = timedelta(days=30)
+
+
+def create_session_token(db: Session, user: User) -> Tuple[str, datetime]:
+    """Issue a new expiring sign-in session token for ``user``. Returns (raw_token, expires_at)."""
+    raw = generate_access_key()
+    expires = datetime.utcnow() + SESSION_TTL
+    db.add(AccessKey(user_id=user.id, key_hash=hash_access_key(raw), label=SESSION_LABEL, expires_at=expires))
+    db.commit()
+    return raw, expires
+
+
+def revoke_token(db: Session, raw_key: str) -> bool:
+    key = db.query(AccessKey).filter(AccessKey.key_hash == hash_access_key(raw_key),
+                                     AccessKey.revoked_at.is_(None)).first()
+    if not key:
+        return False
+    key.revoked_at = datetime.utcnow()
+    db.commit()
+    return True
 
 
 def get_or_create_dev_user(db: Session) -> User:

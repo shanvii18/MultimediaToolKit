@@ -90,7 +90,8 @@ class JobOutput(Base):
 
 
 class AccessKey(Base):
-    """Invite-only personal access key. Only a SHA-256 hash of the key is stored."""
+    """Bearer token: a sign-in session (label "session", expires) or a legacy/CLI access key.
+    Only a SHA-256 hash of the token is stored."""
     __tablename__ = "access_keys"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
@@ -100,6 +101,7 @@ class AccessKey(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_used_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)   # NULL = no expiry (CLI-issued keys)
 
     user = relationship("User")
 

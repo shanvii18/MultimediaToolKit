@@ -47,7 +47,7 @@ def _get_owned_asset(db: Session, asset_id: str, user: User) -> Asset:
 # ---------------- Current user ----------------
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
-    """Who am I? Used by the frontend to validate an access key and show the signed-in user."""
+    """Who am I? Used by the frontend to validate the session and show the signed-in user."""
     return {"id": user.id, "email": user.email, "role": user.role, "auth_mode": settings.effective_auth_mode}
 
 
@@ -167,7 +167,7 @@ def download_asset(
     """
     Download an asset. Authorised by either:
       - a valid short-lived signed URL (``expires`` + ``signature``, as returned in ``download_url``), or
-      - the owner's access key (``Authorization: Bearer <key>``), or the local dev user in development.
+      - the owner's session token (``Authorization: Bearer <token>``), or the local dev user in development.
     """
     if signature is not None or expires is not None:
         if not verify_download_signature(asset_id, expires, signature):
@@ -178,7 +178,7 @@ def download_asset(
     else:
         user = resolve_user(db, authorization, x_access_key)
         if user is None:
-            raise HTTPException(status_code=401, detail="Access key or signed download link required.")
+            raise HTTPException(status_code=401, detail="Please sign in to download this file.")
         asset = _get_owned_asset(db, asset_id, user)
 
     gone = HTTPException(

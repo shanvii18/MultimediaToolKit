@@ -1,5 +1,7 @@
 """
-Admin CLI for invite-only access.
+Admin CLI. Everyday accounts are created by users themselves (public sign-up on the website).
+
+    python -m app.cli set-password --email owner@example.com   # prompts; or MTK_NEW_PASSWORD env var
 
     python -m app.cli invite --email friend@example.com [--label "Portfolio reviewer"]
     python -m app.cli revoke --email friend@example.com
@@ -46,15 +48,41 @@ def _revoke(email: str) -> int:
     return 0
 
 
+def _set_password(email: str) -> int:
+    """Give an existing account (e.g. one created by an old invite) a password; data stays intact."""
+    import getpass
+    import os
+
+    from app.core.passwords import hash_password, password_problem
+
+    password = os.environ.get("MTK_NEW_PASSWORD") or getpass.getpass("New password: ")
+    problem = password_problem(password)
+    if problem:
+        print(f"Error: {problem}", file=sys.stderr)
+        return 1
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email.strip().lower()).first()
+        if not user:
+            print(f"Error: no account for {email}.", file=sys.stderr)
+            return 1
+        user.password_hash = hash_password(password)
+        db.commit()
+    finally:
+        db.close()
+    print(f"Password set for {email}. They can now sign in on the website.")
+    return 0
+
+
 def _list_users() -> int:
     db = SessionLocal()
     try:
         users = db.query(User).filter(User.email != DEV_USER_EMAIL).order_by(User.created_at).all()
         for u in users:
             active = db.query(AccessKey).filter(AccessKey.user_id == u.id, AccessKey.revoked_at.is_(None)).count()
-            print(f"{u.email:40} role={u.role:10} active_keys={active}")
+            print(f"{u.email:40} role={u.role:10} password={'yes' if u.password_hash else 'no'} active_tokens={active}")
         if not users:
-            print("No invited users yet.")
+            print("No users yet.")
     finally:
         db.close()
     return 0
@@ -83,7 +111,9 @@ def main(argv=None) -> int:
     p_inv.add_argument("--label", default=None)
     p_rev = sub.add_parser("revoke", help="Revoke all active keys of a user")
     p_rev.add_argument("--email", required=True)
-    sub.add_parser("list-users", help="List invited users")
+    sub.add_parser("list-users", help="List users")
+    p_pw = sub.add_parser("set-password", help="Set the password of an existing account")
+    p_pw.add_argument("--email", required=True)
     p_dl = sub.add_parser("download-models", help="Download CPU model weights into MODEL_CACHE_DIR")
     p_dl.add_argument("--whisper", nargs="*", default=["tiny", "base"], help="Whisper sizes (tiny base small)")
 
@@ -92,6 +122,8 @@ def main(argv=None) -> int:
         return _invite(args.email, args.label)
     if args.command == "revoke":
         return _revoke(args.email)
+    if args.command == "set-password":
+        return _set_password(args.email)
     if args.command == "download-models":
         return _download_models(args.whisper)
     return _list_users()
