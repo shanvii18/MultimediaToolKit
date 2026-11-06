@@ -9,44 +9,36 @@ export interface Me {
   auth_mode: "access_key" | "dev_open";
 }
 
-const ACCESS_KEY_STORAGE = "mtk_access_key";
-const ACCESS_KEY_PARAM = "access_key";
-
-/**
- * Invite-only access: a personal invite link (`/?access_key=...`) is opened once.
- * The key is moved into localStorage and removed from the address bar so it is not
- * left in history, bookmarks or screenshots. It is then sent as a Bearer header.
- */
-function captureAccessKeyFromUrl(): void {
-  if (typeof window === "undefined") return;
-  try {
-    const url = new URL(window.location.href);
-    const key = url.searchParams.get(ACCESS_KEY_PARAM);
-    if (key) {
-      window.localStorage.setItem(ACCESS_KEY_STORAGE, key.trim());
-      url.searchParams.delete(ACCESS_KEY_PARAM);
-      window.history.replaceState(window.history.state, "", url.toString());
-    }
-  } catch (_) {
-    // Storage unavailable (private mode / blocked): requests proceed without a key.
-  }
+export interface AuthSession {
+  token: string;
+  expires_at: string;
+  user: { id: string; email: string; role: string };
 }
 
-function getAccessKey(): string | null {
+/** Session token from email + password sign-in, sent as a Bearer header. */
+const SESSION_STORAGE = "mtk_session";
+// Older builds stored an invite access key here; it is cleared on first load.
+const LEGACY_KEY_STORAGE = "mtk_access_key";
+
+function getSessionToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(ACCESS_KEY_STORAGE);
+    return window.localStorage.getItem(SESSION_STORAGE);
   } catch (_) {
     return null;
   }
 }
 
 function authHeaders(): Record<string, string> {
-  const key = getAccessKey();
-  return key ? { Authorization: `Bearer ${key}` } : {};
+  const token = getSessionToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-captureAccessKeyFromUrl();
+if (typeof window !== "undefined") {
+  try {
+    window.localStorage.removeItem(LEGACY_KEY_STORAGE);
+  } catch (_) {}
+}
 
 /** Fired when the API answers 401 so the shell can send the user to the sign-in page. */
 function notifyUnauthorized(): void {
@@ -77,19 +69,46 @@ export class ApiClient {
     return res.json() as Promise<T>;
   }
 
-  // Access keys (invite-only accounts)
-  static setAccessKey(key: string): void {
-    window.localStorage.setItem(ACCESS_KEY_STORAGE, key.trim());
-  }
-
-  static clearAccessKey(): void {
+  // Accounts: public email + password sign-up / sign-in
+  private static storeSession(session: AuthSession): AuthSession {
     try {
-      window.localStorage.removeItem(ACCESS_KEY_STORAGE);
+      window.localStorage.setItem(SESSION_STORAGE, session.token);
     } catch (_) {}
+    return session;
   }
 
-  static hasAccessKey(): boolean {
-    return !!getAccessKey();
+  static async signUp(email: string, password: string): Promise<AuthSession> {
+    const session = await this.request<AuthSession>("/api/v1/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    return this.storeSession(session);
+  }
+
+  static async signIn(email: string, password: string): Promise<AuthSession> {
+    const session = await this.request<AuthSession>("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    return this.storeSession(session);
+  }
+
+  static async signOut(): Promise<void> {
+    try {
+      if (getSessionToken()) await this.request<void>("/api/v1/auth/logout", { method: "POST" });
+    } catch (_) {
+      // Signing out locally must work even if the server is asleep or unreachable.
+    } finally {
+      try {
+        window.localStorage.removeItem(SESSION_STORAGE);
+      } catch (_) {}
+    }
+  }
+
+  static isSignedIn(): boolean {
+    return !!getSessionToken();
   }
 
   static async getMe(): Promise<Me> {

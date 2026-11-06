@@ -87,8 +87,8 @@ export function AppShell({ children }: AppShellProps) {
     setTheme(next);
   };
 
-  const signOut = () => {
-    ApiClient.clearAccessKey();
+  const signOut = async () => {
+    await ApiClient.signOut();
     setMe(null);
     router.push("/login");
   };
@@ -245,9 +245,12 @@ export function AppShell({ children }: AppShellProps) {
         {needsSignIn && pathname !== "/login" && (
           <div className="px-4 sm:px-6 py-3 bg-amber-950/40 border-b border-amber-800/50 text-amber-300 text-sm flex flex-wrap items-center gap-3">
             <KeyRound className="h-4 w-4 shrink-0" />
-            <span>MultimediaToolKit is invite-only. Sign in with your personal access key to see your files.</span>
+            <span>Sign in or create a free account to convert files and see your history.</span>
             <Link href="/login" className="underline font-medium">
               Sign in
+            </Link>
+            <Link href="/login?mode=signup" className="underline font-medium">
+              Create account
             </Link>
           </div>
         )}
