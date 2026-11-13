@@ -433,10 +433,10 @@ def image_to_video(ctx: JobContext) -> None:
         ctx.progress(40, "Narrating description")
         audio = ctx.tmp("narration.wav")
         seconds = tts_adapter.synthesize_to_wav(description, audio, voice=ctx.params.get("voice", "af_heart")) + 0.6
-        meta.update({"engine": f"AI description ({ai_provider.provider}) + {tts_adapter.last_engine} + FFmpeg Ken Burns",
+        meta.update({"engine": f"AI description ({ai_provider.last_caption_engine}) + {tts_adapter.last_engine} + FFmpeg Ken Burns",
                      "description": description, "ai_generated": True})
         ctx.add_text_output(description + "\n", f"{stem}_description.txt", "description_txt",
-                            {"preview_text": description, "engine": f"AI provider: {ai_provider.provider}"})
+                            {"preview_text": description, "engine": ai_provider.last_caption_engine})
 
     free_models()
     ctx.progress(60, "Rendering camera motion")
@@ -579,7 +579,7 @@ def describe_image_to_text(ctx: JobContext) -> None:
     text = _ai_describe(ctx, img)
     stem = stem_of(source.filename, "image")
     ctx.add_text_output(text + "\n", f"{stem}_description.txt", "description_txt", {
-        "engine": f"AI provider: {ai_provider.provider}", "preview_text": text, "ai_generated": True})
+        "engine": ai_provider.last_caption_engine, "preview_text": text, "ai_generated": True})
 
 
 def describe_image_to_audio(ctx: JobContext) -> None:
@@ -591,7 +591,7 @@ def describe_image_to_audio(ctx: JobContext) -> None:
     text = _ai_describe(ctx, img)
     stem = stem_of(source.filename, "image")
     ctx.add_text_output(text + "\n", f"{stem}_description.txt", "description_txt",
-                        {"engine": f"AI provider: {ai_provider.provider}", "preview_text": text})
+                        {"engine": ai_provider.last_caption_engine, "preview_text": text})
     speak_text(ctx, text, f"{stem}_description", 40, 98, {"pipeline": "AI description → text-to-speech", "ai_generated": True})
 
 
@@ -607,9 +607,9 @@ def describe_animation(ctx: JobContext, speak: bool) -> None:
         parts.append((ts, _ai_describe(ctx, frame)))
     text = "\n".join(f"[{ts:.2f}s] {d}" for ts, d in parts)
     ctx.add_text_output(text + "\n", f"{stem}_description.txt", "description_txt",
-                        {"engine": f"AI provider: {ai_provider.provider}", "preview_text": text, "ai_generated": True})
+                        {"engine": ai_provider.last_caption_engine, "preview_text": text, "ai_generated": True})
     ctx.add_text_output(json.dumps({"frames": [{"timestamp": t, "description": d} for t, d in parts]}, indent=2),
-                        f"{stem}_description.json", "description_json", {"engine": f"AI provider: {ai_provider.provider}"})
+                        f"{stem}_description.json", "description_json", {"engine": ai_provider.last_caption_engine})
     if speak:
         narration = " Then, ".join(d for _, d in parts)
         speak_text(ctx, narration, f"{stem}_narration", 82, 98, {"pipeline": "AI frame descriptions → text-to-speech",

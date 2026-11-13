@@ -36,6 +36,9 @@ LOCAL_ENGINE = "Kokoro-82M (kokoro-onnx, int8, on this server)"
 AURA_SPEAKERS = {"af_heart": "luna", "af_bella": "thalia", "af_sarah": "athena", "am_michael": "orion",
                  "am_adam": "arcas", "bf_emma": "pandora", "bf_isabella": "pandora", "bm_george": "draco",
                  "bm_daniel": "draco"}
+GEMINI_VOICES = {"af_heart": "Kore", "af_bella": "Aoede", "af_sarah": "Leda", "am_michael": "Charon",
+                 "am_adam": "Puck", "bf_emma": "Zephyr", "bf_isabella": "Despina", "bm_george": "Fenrir",
+                 "bm_daniel": "Orus"}
 _CLOUD_CHUNK_CHARS = 1000
 # Kokoro's inference memory grows with chunk length (measured: 100 chars +90 MB, 200 +190 MB,
 # 400 +365 MB over the loaded model), so keep chunks short on small servers.
@@ -192,7 +195,8 @@ class KokoroTTSAdapter:
         try:
             with tempfile.TemporaryDirectory(prefix="mtk-tts-") as tmp:
                 for i, chunk in enumerate(chunks):
-                    wav, engine = ai_provider.speak_wav(chunk, AURA_SPEAKERS.get(voice, "luna"))
+                    wav, engine = ai_provider.speak_wav(chunk, AURA_SPEAKERS.get(voice, "luna"),
+                                                        GEMINI_VOICES.get(voice, "Kore"))
                     raw, norm = os.path.join(tmp, f"{i}_raw.wav"), os.path.join(tmp, f"{i}.wav")
                     with open(raw, "wb") as f:
                         f.write(wav)

@@ -477,3 +477,44 @@ def test_cloud_transcription_maps_segments(cf_speech, tmp_path):
     assert [s.text for s in t.segments] == ["Hello world.", "Second line."] and t.language == "en"
     assert "Cloudflare" in t.engine and calls[0][0].endswith("/whisper-large-v3-turbo")
     assert base64.b64decode(calls[0][1]["audio"])[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")   # sent as MP3
+
+
+def test_gemini_describes_and_speaks_before_cloudflare(cf_speech, monkeypatch, tmp_path):
+    install, calls = cf_speech
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "gk")
+    pcm = base64.b64encode(b"\x00\x10" * 12000).decode()
+
+    def handler(r):
+        if "generativelanguage" in r.url.host and "tts" in r.url.path:
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [
+                {"inlineData": {"mimeType": "audio/L16;codec=pcm;rate=24000", "data": pcm}}]}}]})
+        if "generativelanguage" in r.url.host:
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "a fox in snow."}]}}]})
+        return httpx.Response(500)
+    install(handler)
+    buf = io.BytesIO(); Image.new("RGB", (8, 8)).save(buf, "PNG")
+    assert ai_provider.describe_image(buf.getvalue()) == "A fox in snow."
+    assert "Gemini" in ai_provider.last_caption_engine
+    assert calls[0][1]["contents"][0]["parts"][0]["inline_data"]["mime_type"] == "image/png"
+    seconds = tts_adapter.synthesize_to_wav("Hello there.", str(tmp_path / "g.wav"), voice="am_michael")
+    assert 0.4 < seconds < 0.8 and "Gemini TTS" in tts_adapter.last_engine and "Charon" in tts_adapter.last_engine
+
+
+def test_gemini_quota_falls_back_to_cloudflare_caption(cf_speech, monkeypatch):
+    install, _ = cf_speech
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "gk")
+    install(lambda r: httpx.Response(429, json={"error": {"message": "quota"}}) if "generativelanguage" in r.url.host
+            else httpx.Response(200, json={"result": {"description": "a scene."}}))
+    buf = io.BytesIO(); Image.new("RGB", (8, 8)).save(buf, "JPEG")
+    assert ai_provider.describe_image(buf.getvalue()) == "A scene."
+    assert "LLaVA" in ai_provider.last_caption_engine
+
+
+def test_caption_available_with_gemini_only(monkeypatch):
+    from app.engines.availability import engine_status
+    monkeypatch.setattr(settings, "AI_PROVIDER", "none")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "gk")
+    st = engine_status(refresh=True)
+    assert st["ai_caption"] is None and st["ai_image"] is not None      # describe works, image generation does not
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+    engine_status(refresh=True)

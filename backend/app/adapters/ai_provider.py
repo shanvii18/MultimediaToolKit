@@ -29,6 +29,17 @@ class AIProviderError(RuntimeError):
     pass
 
 
+
+def _sniff_mime(data: bytes) -> str:
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
+
+
 class AIProvider:
     engine_image = "ai_image"
     engine_caption = "ai_caption"
@@ -121,8 +132,50 @@ class AIProvider:
             raise AIProviderError(msg)
 
     # ---------------- speech (Cloudflare only) ----------------
+    def cloudflare_ready(self) -> bool:
+        return self.provider == "cloudflare" and self.availability() is None
+
+    @staticmethod
+    def gemini_enabled() -> bool:
+        return bool((settings.GEMINI_API_KEY or "").strip())
+
     def speech_enabled(self) -> bool:
-        return settings.CLOUD_SPEECH and self.provider == "cloudflare" and self.availability() is None
+        return settings.CLOUD_SPEECH and (self.gemini_enabled() or self.cloudflare_ready())
+
+    def caption_availability(self) -> Optional[str]:
+        return None if self.gemini_enabled() else self.availability()
+
+    def _gemini(self, client: httpx.Client, model: str, what: str, body: dict) -> list:
+        res = self._quiet(lambda: self._post(
+            client, f"{settings.GEMINI_BASE_URL.rstrip('/')}/{model}:generateContent", what,
+            headers={"x-goog-api-key": settings.GEMINI_API_KEY.strip()}, json=body))
+        try:
+            return res.json()["candidates"][0]["content"]["parts"]
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise AIProviderError(f"{what} failed: Gemini returned no content.")
+
+    def _gemini_speak(self, client: httpx.Client, text: str, voice: str) -> bytes:
+        parts = self._gemini(client, settings.GEMINI_TTS_MODEL, "Speech synthesis", {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {"responseModalities": ["AUDIO"],
+                                 "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}}})
+        data = next((p["inlineData"] for p in parts if "inlineData" in p), None)
+        if not data:
+            raise AIProviderError("Speech synthesis failed: Gemini returned no audio.")
+        audio = base64.b64decode(data["data"])
+        if audio[:4] == b"RIFF":
+            return audio
+        import re
+        import wave
+
+        m = re.search(r"rate=(\d+)", data.get("mimeType", ""))          # raw 16-bit PCM (audio/L16;rate=24000)
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(int(m.group(1)) if m else 24000)
+            w.writeframes(audio)
+        return buf.getvalue()
 
     def _quiet(self, fn):
         """Speech has a local fallback, so its failures must not mark every AI mode unavailable."""
@@ -138,13 +191,21 @@ class AIProvider:
     def _cf_url(self, model: str) -> str:
         return f"https://api.cloudflare.com/client/v4/accounts/{settings.CLOUDFLARE_ACCOUNT_ID}/ai/run/{model}"
 
-    def speak_wav(self, text: str, speaker: str) -> Tuple[bytes, str]:
-        """Text -> WAV bytes. Returns (wav, engine label). Tries Deepgram Aura-2, then MeloTTS."""
+    def speak_wav(self, text: str, speaker: str, gemini_voice: str = "Kore") -> Tuple[bytes, str]:
+        """Text -> WAV bytes. Returns (wav, engine label). Tries Gemini TTS, Deepgram Aura-2, then MeloTTS."""
         if not self.speech_enabled():
             raise AIProviderError("Cloud speech is not enabled.")
         auth = {"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"}
         errors = []
         with self._client() as client:
+            if self.gemini_enabled():
+                try:
+                    wav = self._gemini_speak(client, text, gemini_voice)
+                    return wav, f"Gemini TTS ({settings.GEMINI_TTS_MODEL}, voice {gemini_voice})"
+                except AIProviderError as e:
+                    errors.append(str(e))
+            if not self.cloudflare_ready():
+                raise AIProviderError("; ".join(errors) or "No speech provider is configured.")
             try:
                 res = self._quiet(lambda: self._post(
                     client, self._cf_url(settings.CLOUDFLARE_TTS_MODEL), "Speech synthesis", headers=auth,
@@ -171,7 +232,7 @@ class AIProvider:
 
     def transcribe(self, audio_bytes: bytes, language: Optional[str] = None) -> dict:
         """Audio file bytes (any FFmpeg-readable format) -> Whisper large-v3-turbo result dict."""
-        if not self.speech_enabled():
+        if not (settings.CLOUD_SPEECH and self.cloudflare_ready()):
             raise AIProviderError("Cloud speech is not enabled.")
         if len(audio_bytes) > settings.CLOUD_ASR_MAX_BYTES:
             raise AIProviderError("Audio is too large for the cloud transcriber.")
@@ -221,11 +282,31 @@ class AIProvider:
             return self._valid_image(res.content, "Image generation")
 
     # ---------------- image -> description ----------------
+    last_caption_engine: str = "AI image description"
+
     def describe_image(self, image_bytes: bytes,
                        instruction: str = "Describe this image in detail in 3-5 sentences.") -> str:
+        gemini_error = None
+        if self.gemini_enabled():
+            try:
+                with self._client() as client:
+                    parts = self._gemini(client, settings.GEMINI_VISION_MODEL, "Image description", {"contents": [{"parts": [
+                        {"inline_data": {"mime_type": _sniff_mime(image_bytes),
+                                         "data": base64.b64encode(image_bytes).decode()}},
+                        {"text": instruction + " Plain prose, no markdown."}]}]})
+                text = " ".join(p.get("text", "") for p in parts).strip()
+                if text:
+                    self.last_caption_engine = f"Gemini ({settings.GEMINI_VISION_MODEL})"
+                    text = text[:1500]
+                    return text[0].upper() + text[1:]
+                gemini_error = "Gemini returned no description."
+            except AIProviderError as e:
+                gemini_error = str(e)
         reason = self.availability()
         if reason:
-            raise AIProviderError(reason)
+            raise AIProviderError(gemini_error or reason)
+        self.last_caption_engine = (f"LLaVA ({settings.CLOUDFLARE_CAPTION_MODEL}, Cloudflare)"
+                                    if self.provider == "cloudflare" else f"{settings.HF_CAPTION_MODEL} (Hugging Face)")
         with self._client() as client:
             if self.provider == "cloudflare":
                 url = (f"https://api.cloudflare.com/client/v4/accounts/{settings.CLOUDFLARE_ACCOUNT_ID}"

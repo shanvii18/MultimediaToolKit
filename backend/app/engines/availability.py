@@ -51,7 +51,7 @@ _CHECKS = {
     "tesseract": ocr_adapter.availability,
     "pillow": _check_pillow,
     "ai_image": ai_provider.availability,
-    "ai_caption": ai_provider.availability,
+    "ai_caption": ai_provider.caption_availability,
     "ai_img2img": ai_provider.img2img_availability,
 }
 

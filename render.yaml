@@ -85,3 +85,7 @@ services:
         sync: false
       - key: CLOUDFLARE_API_TOKEN
         sync: false
+      # Gemini API free tier (Google AI Studio key): image description + text-to-speech, so Cloudflare's
+      # daily allowance is kept for image generation.
+      - key: GEMINI_API_KEY
+        sync: false

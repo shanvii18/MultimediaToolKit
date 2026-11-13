@@ -122,6 +122,13 @@ class Settings(BaseSettings):
     # Speech on Cloudflare's GPUs when AI_PROVIDER=cloudflare (Render Free has 0.1 CPU: local Kokoro takes
     # ~25 s for one sentence). Local Kokoro / faster-whisper remain the automatic fallback.
     CLOUD_SPEECH: bool = True
+    # Google AI Studio (Gemini API) free tier: image description + text-to-speech. Tried before
+    # Cloudflare so Cloudflare's small daily allowance is left for image generation. Image generation
+    # ("Nano Banana") has no free quota on this API (429 on the first request), so it is not used.
+    GEMINI_API_KEY: str = ""
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/models"
+    GEMINI_VISION_MODEL: str = "gemini-flash-lite-latest"
+    GEMINI_TTS_MODEL: str = "gemini-3.8-flash-tts"
     CLOUDFLARE_TTS_MODEL: str = "@cf/deepgram/aura-2-en"
     CLOUDFLARE_TTS_FALLBACK_MODEL: str = "@cf/myshell-ai/melotts"   # deprecated by Cloudflare on 2026-11-20
     CLOUDFLARE_ASR_MODEL: str = "@cf/openai/whisper-large-v3-turbo"
