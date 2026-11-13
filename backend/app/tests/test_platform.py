@@ -214,3 +214,18 @@ def test_worker_wakes_immediately_on_local_job_signal(monkeypatch):
     tm.sleep(0.5)
     w._stop.set(); job_queue.LOCAL_WAKE.set(); t.join(5)
     assert any(c >= start and c - start < 0.4 for c in claimed), "worker did not wake on the local signal"
+
+
+def test_installed_engines_are_not_reprobed_after_first_success(monkeypatch):
+    from app.engines import availability as av
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        return None if calls["n"] == 1 else "FFmpeg is not installed on this server."   # later probe "times out"
+    monkeypatch.setitem(av._CHECKS, "ffmpeg", flaky)
+    monkeypatch.setattr(av, "_found", {})
+    monkeypatch.setattr(av, "_cache", {})
+    assert av.engine_status()["ffmpeg"] is None
+    monkeypatch.setattr(av, "_cache_time", 0.0)                     # cache expired
+    assert av.engine_status()["ffmpeg"] is None and calls["n"] == 1   # not probed again

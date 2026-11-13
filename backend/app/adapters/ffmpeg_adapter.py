@@ -119,7 +119,8 @@ class FFmpegAdapter:
         if not cmd:
             return False
         try:
-            res = subprocess.run([cmd, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+            # generous timeout: on a busy 0.1-CPU server even `-version` can take several seconds
+            res = subprocess.run([cmd, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
             return res.returncode == 0
         except Exception:
             return False
