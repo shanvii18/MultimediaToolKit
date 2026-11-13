@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.services.job_queue import claim_next_job, heartbeat, recover_stale_jobs, wait_for_job_signal
+from app.services.job_queue import LOCAL_WAKE, claim_next_job, heartbeat, recover_stale_jobs, wait_for_job_signal
 from app.services.job_runner_service import job_runner_service
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,9 @@ class JobWorker:
                 if self.run_once() is None:
                     # Wake instantly on a Redis signal if enabled, otherwise poll the database.
                     if wait_for_job_signal(settings.WORKER_POLL_INTERVAL_SECONDS) is None:
-                        self._stop.wait(settings.WORKER_POLL_INTERVAL_SECONDS)
+                        # Wakes at once when this process accepts a job; DB polling still covers others.
+                        LOCAL_WAKE.wait(settings.WORKER_POLL_INTERVAL_SECONDS)
+                        LOCAL_WAKE.clear()
             except Exception:
                 logger.exception("Worker loop error; retrying shortly.")
                 self._stop.wait(settings.WORKER_POLL_INTERVAL_SECONDS)
@@ -101,5 +103,6 @@ class JobWorker:
 
     def stop(self, timeout: float = 10.0) -> None:
         self._stop.set()
+        LOCAL_WAKE.set()                       # do not sit out the poll interval on shutdown
         if self._thread:
             self._thread.join(timeout=timeout)

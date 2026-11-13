@@ -10,6 +10,7 @@ free-tier sleep, crash) are re-queued up to ``JOB_MAX_ATTEMPTS`` and then failed
 Works on PostgreSQL (``FOR UPDATE SKIP LOCKED``) and SQLite (conditional UPDATE).
 """
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -44,8 +45,14 @@ def _redis():
     return _redis_client
 
 
+# In-process wake-up for the embedded worker (API and worker share a process on small deployments):
+# a new job starts immediately instead of waiting for the next database poll.
+LOCAL_WAKE = threading.Event()
+
+
 def notify_new_job(job_id: str, client=None) -> bool:
     """Push a wake-up signal so an idle worker claims the job immediately. The DB stays the source of truth."""
+    LOCAL_WAKE.set()
     client = client or _redis()
     if client is None:
         return False
