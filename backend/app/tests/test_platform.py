@@ -194,3 +194,23 @@ def test_isolated_job_unknown_start_method_falls_back_to_spawn(monkeypatch):
     job_id = _queued_job()
     assert run_job_isolated(job_id, memory_limit_mb=0)["exitcode"] == 0
     assert _job(job_id).status == "succeeded"
+
+
+def test_worker_wakes_immediately_on_local_job_signal(monkeypatch):
+    import threading as th
+    import time as tm
+    from app.core.config import settings as cfg
+    from app.services import job_queue
+    from app.worker import runner
+    monkeypatch.setattr(cfg, "WORKER_POLL_INTERVAL_SECONDS", 30.0)
+    w = runner.JobWorker("wake-test")
+    claimed = []
+    monkeypatch.setattr(w, "run_once", lambda: claimed.append(tm.monotonic()) or None)
+    monkeypatch.setattr(w, "recover", lambda: 0)
+    t = th.Thread(target=w.run_forever, daemon=True); t.start()
+    tm.sleep(0.3)
+    start = tm.monotonic()
+    job_queue.notify_new_job("x")
+    tm.sleep(0.5)
+    w._stop.set(); job_queue.LOCAL_WAKE.set(); t.join(5)
+    assert any(c >= start and c - start < 0.4 for c in claimed), "worker did not wake on the local signal"

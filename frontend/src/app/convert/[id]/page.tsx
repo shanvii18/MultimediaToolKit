@@ -59,9 +59,16 @@ export default function ConversionWorkspacePage() {
           setLoadError(`Unknown conversion "${conversionId}".`);
           return;
         }
+        // Generative AI first (and selected by default), then local models, then plain CPU tools;
+        // modes that cannot run right now go last.
+        const runnable = (s: string) => s === "available" || s === "temporarily_unavailable";
+        const rank = (m: (typeof found.modes)[number]) =>
+          (runnable(m.status) ? 0 : m.status === "coming_soon" ? 20 : 10) +
+          (m.kind === "ai_provider" ? 0 : m.kind === "ai_local" ? 1 : 2);
+        found.modes = [...found.modes].sort((x, y) => rank(x) - rank(y));
         setConversion(found);
         setValues(initialValues(found));
-        const firstRunnable = found.modes.find((m) => m.status === "available") || found.modes[0];
+        const firstRunnable = found.modes.find((m) => runnable(m.status)) || found.modes[0];
         setModeId(firstRunnable?.id || "");
       })
       .catch((e) => setLoadError(describeError(e)));
@@ -87,7 +94,7 @@ export default function ConversionWorkspacePage() {
       } catch (e: any) {
         setError(describeError(e));
       }
-    }, 1500);
+    }, 800); // jobs start instantly server-side; poll often so results appear without delay
     return () => clearInterval(timer);
   }, [job]);
 
