@@ -25,6 +25,11 @@ LOCAL_AI_ENGINES = ("whisper", "kokoro")
 _CACHE_SECONDS = 30.0
 _cache: Dict[str, Optional[str]] = {}
 _cache_time = 0.0
+# Installed programs/models do not disappear while the server runs. Once found, they are never probed
+# again: re-running `ffmpeg -version` on a 0.1-CPU server busy with a job timed out and wrongly reported
+# "FFmpeg is not installed" (and slowed every request). Config-only AI checks are re-evaluated.
+_STICKY = ("ffmpeg", "whisper", "kokoro", "tesseract", "pillow")
+_found: Dict[str, object] = {}          # engine -> the check function that succeeded
 
 
 def _check_ffmpeg() -> Optional[str]:
@@ -55,7 +60,15 @@ def engine_status(refresh: bool = False) -> Dict[str, Optional[str]]:
     """Map engine -> None (available) or a reason string."""
     global _cache, _cache_time
     if refresh or not _cache or time.monotonic() - _cache_time > _CACHE_SECONDS:
-        _cache = {name: check() for name, check in _CHECKS.items()}
+        fresh = {}
+        for name, check in _CHECKS.items():
+            if name in _STICKY and _found.get(name) is check and not refresh:
+                fresh[name] = None
+                continue
+            fresh[name] = check()
+            if name in _STICKY and fresh[name] is None:
+                _found[name] = check
+        _cache = fresh
         _cache_time = time.monotonic()
     return dict(_cache)
 
