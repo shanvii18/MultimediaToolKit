@@ -395,7 +395,8 @@ def test_image_to_audio_real_ocr_and_tts(worker, text_image):
     assert job["status"] == "succeeded", job["error_message"]
     outs = outputs_by_type(job)
     assert "HELLO" in download(outs["ocr_txt"]).decode("utf-8").upper()
-    assert outs["audio_mp3"]["metadata_json"]["pipeline"] == "Tesseract OCR → Kokoro TTS"
+    assert outs["audio_mp3"]["metadata_json"]["pipeline"] == "Tesseract OCR → text-to-speech"
+    assert "Kokoro" in outs["audio_mp3"]["metadata_json"]["engine"]          # no AI provider in tests -> local
 
 
 def test_image_to_text_pipeline_with_stub_ocr(worker, text_image, fake_ocr):

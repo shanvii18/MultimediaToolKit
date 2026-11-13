@@ -44,5 +44,5 @@ def image_to_audio(ctx: JobContext) -> None:
         "engine": "Tesseract OCR", "preview_text": result.text[:2000], "word_count": result.word_count,
     })
     speak_text(ctx, result.text, f"{stem}_read_aloud", 35, 98, {
-        "pipeline": "Tesseract OCR → Kokoro TTS", "source_asset_id": source.id,
+        "pipeline": "Tesseract OCR → text-to-speech", "source_asset_id": source.id,
     })

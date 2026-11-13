@@ -185,7 +185,7 @@ def text_to_video(ctx: JobContext) -> None:
     motion.add_soft_subtitles(joined, srt_path, final)
 
     meta = {"engine": ("AI images + " if ctx.mode == "ai_scenes" else "Typography cards + ") +
-                      ("Kokoro narration + " if narrate else "") + "FFmpeg Ken Burns",
+                      (f"{tts_adapter.last_engine} narration + " if narrate else "") + "FFmpeg Ken Burns",
             "scenes": len(scenes), "duration_seconds": round(t, 2), "ai_generated": ctx.mode == "ai_scenes"}
     ctx.add_output(final, f"{stem}_video.mp4", "video_mp4", meta)
     ctx.add_text_output(srt, f"{stem}_captions.srt", "subtitles_srt", {"engine": "script timing"})
@@ -335,7 +335,7 @@ def audio_to_video(ctx: JobContext) -> None:
         "visual_style": ctx.params.get("visual_style", "waves"), "captions": bool(captions),
         "ai_generated": ctx.mode == "ai_visualizer"})
     if captions:
-        ctx.add_text_output(captions, f"{stem}_captions.srt", "subtitles_srt", {"engine": "faster-whisper"})
+        ctx.add_text_output(captions, f"{stem}_captions.srt", "subtitles_srt", {"engine": "speech recognition (Whisper)"})
 
 
 # ======================================================================
@@ -433,7 +433,7 @@ def image_to_video(ctx: JobContext) -> None:
         ctx.progress(40, "Narrating description")
         audio = ctx.tmp("narration.wav")
         seconds = tts_adapter.synthesize_to_wav(description, audio, voice=ctx.params.get("voice", "af_heart")) + 0.6
-        meta.update({"engine": f"AI description ({ai_provider.provider}) + Kokoro + FFmpeg Ken Burns",
+        meta.update({"engine": f"AI description ({ai_provider.provider}) + {tts_adapter.last_engine} + FFmpeg Ken Burns",
                      "description": description, "ai_generated": True})
         ctx.add_text_output(description + "\n", f"{stem}_description.txt", "description_txt",
                             {"preview_text": description, "engine": f"AI provider: {ai_provider.provider}"})
@@ -592,7 +592,7 @@ def describe_image_to_audio(ctx: JobContext) -> None:
     stem = stem_of(source.filename, "image")
     ctx.add_text_output(text + "\n", f"{stem}_description.txt", "description_txt",
                         {"engine": f"AI provider: {ai_provider.provider}", "preview_text": text})
-    speak_text(ctx, text, f"{stem}_description", 40, 98, {"pipeline": "AI description → Kokoro TTS", "ai_generated": True})
+    speak_text(ctx, text, f"{stem}_description", 40, 98, {"pipeline": "AI description → text-to-speech", "ai_generated": True})
 
 
 def describe_animation(ctx: JobContext, speak: bool) -> None:
@@ -612,7 +612,7 @@ def describe_animation(ctx: JobContext, speak: bool) -> None:
                         f"{stem}_description.json", "description_json", {"engine": f"AI provider: {ai_provider.provider}"})
     if speak:
         narration = " Then, ".join(d for _, d in parts)
-        speak_text(ctx, narration, f"{stem}_narration", 82, 98, {"pipeline": "AI frame descriptions → Kokoro TTS",
+        speak_text(ctx, narration, f"{stem}_narration", 82, 98, {"pipeline": "AI frame descriptions → text-to-speech",
                                                                  "ai_generated": True})
 
 

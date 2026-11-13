@@ -120,6 +120,74 @@ class AIProvider:
                 self._record_failure(msg)
             raise AIProviderError(msg)
 
+    # ---------------- speech (Cloudflare only) ----------------
+    def speech_enabled(self) -> bool:
+        return settings.CLOUD_SPEECH and self.provider == "cloudflare" and self.availability() is None
+
+    def _quiet(self, fn):
+        """Speech has a local fallback, so its failures must not mark every AI mode unavailable."""
+        with self._lock:
+            before = self._issue
+        try:
+            return fn()
+        except AIProviderError:
+            with self._lock:
+                self._issue = before
+            raise
+
+    def _cf_url(self, model: str) -> str:
+        return f"https://api.cloudflare.com/client/v4/accounts/{settings.CLOUDFLARE_ACCOUNT_ID}/ai/run/{model}"
+
+    def speak_wav(self, text: str, speaker: str) -> Tuple[bytes, str]:
+        """Text -> WAV bytes. Returns (wav, engine label). Tries Deepgram Aura-2, then MeloTTS."""
+        if not self.speech_enabled():
+            raise AIProviderError("Cloud speech is not enabled.")
+        auth = {"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"}
+        errors = []
+        with self._client() as client:
+            try:
+                res = self._quiet(lambda: self._post(
+                    client, self._cf_url(settings.CLOUDFLARE_TTS_MODEL), "Speech synthesis", headers=auth,
+                    json={"text": text, "speaker": speaker, "encoding": "linear16", "container": "wav",
+                          "sample_rate": 24000}))
+                if res.content[:4] == b"RIFF":
+                    return res.content, f"Deepgram Aura-2 ({speaker}, Cloudflare Workers AI)"
+                errors.append("Aura returned no audio")
+            except AIProviderError as e:
+                errors.append(str(e))
+            if settings.CLOUDFLARE_TTS_FALLBACK_MODEL:
+                try:
+                    res = self._quiet(lambda: self._post(
+                        client, self._cf_url(settings.CLOUDFLARE_TTS_FALLBACK_MODEL), "Speech synthesis",
+                        headers=auth, json={"prompt": text, "lang": "en"}))
+                    audio = ((res.json() or {}).get("result") or {}).get("audio")
+                    wav = base64.b64decode(audio) if audio else b""
+                    if wav[:4] == b"RIFF":
+                        return wav, "MeloTTS (Cloudflare Workers AI)"
+                    errors.append("MeloTTS returned no audio")
+                except (AIProviderError, ValueError) as e:
+                    errors.append(str(e))
+        raise AIProviderError("; ".join(errors))
+
+    def transcribe(self, audio_bytes: bytes, language: Optional[str] = None) -> dict:
+        """Audio file bytes (any FFmpeg-readable format) -> Whisper large-v3-turbo result dict."""
+        if not self.speech_enabled():
+            raise AIProviderError("Cloud speech is not enabled.")
+        if len(audio_bytes) > settings.CLOUD_ASR_MAX_BYTES:
+            raise AIProviderError("Audio is too large for the cloud transcriber.")
+        body = {"audio": base64.b64encode(audio_bytes).decode(), "vad_filter": True,
+                "condition_on_previous_text": False}
+        if language:
+            body["language"] = language
+        with self._client() as client:
+            res = self._quiet(lambda: self._post(
+                client, self._cf_url(settings.CLOUDFLARE_ASR_MODEL), "Transcription",
+                headers={"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"}, json=body))
+        result = (res.json() or {}).get("result") or {}
+        if "segments" not in result and "text" not in result:
+            raise AIProviderError("Transcription failed: provider returned no transcript.")
+        return result
+
     # ---------------- text -> image ----------------
     def generate_image(self, prompt: str, width: int = 1024, height: int = 1024, steps: int = 4) -> bytes:
         reason = self.availability()

@@ -458,7 +458,10 @@ def mode_kind(mode: ModeSpec) -> str:
     if any(e in AI_ENGINES for e in mode.engines) or mode.id.startswith("ai"):
         return "ai_provider"
     if any(e in LOCAL_AI_ENGINES for e in mode.engines):
-        return "ai_local"
+        # Speech runs on Cloudflare when configured (local model only as fallback).
+        from app.adapters.ai_provider import ai_provider
+
+        return "ai_provider" if ai_provider.speech_enabled() else "ai_local"
     return "cpu"
 
 

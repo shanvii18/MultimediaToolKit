@@ -48,7 +48,7 @@ def save_transcript_outputs(ctx: JobContext, transcript: Transcript, stem: str, 
     if not transcript.segments:
         raise ConversionError("No speech was detected in the audio.", code="NO_SPEECH")
     meta = {
-        "engine": f"faster-whisper/{transcript.model}",
+        "engine": transcript.engine or f"faster-whisper/{transcript.model}",
         "language": transcript.language,
         "duration_seconds": round(transcript.duration, 2),
         "preview_text": transcript.text[:2000],
@@ -64,7 +64,7 @@ def save_transcript_outputs(ctx: JobContext, transcript: Transcript, stem: str, 
 # ---------------- speech synthesis ----------------
 def speak_text(ctx: JobContext, text: str, stem: str, start: float, end: float,
                extra_meta: Optional[Dict] = None) -> None:
-    """Synthesize ``text`` with Kokoro and store it in the requested audio format."""
+    """Synthesize ``text`` (Cloudflare speech, or local Kokoro as fallback) in the requested audio format."""
     text = (text or "").strip()
     if not text:
         raise ConversionError("There is no text to speak.", code="NO_TEXT")
@@ -78,7 +78,7 @@ def speak_text(ctx: JobContext, text: str, stem: str, start: float, end: float,
     if fmt not in AUDIO_FORMATS:
         raise ConversionError(f"Unsupported audio format '{fmt}'.")
 
-    ctx.progress(start, "Loading voice model")
+    ctx.progress(start, "Generating speech")
     wav = ctx.tmp("speech.wav")
     duration = tts_adapter.synthesize_to_wav(
         text, wav, voice=voice, speed=speed,
@@ -93,7 +93,7 @@ def speak_text(ctx: JobContext, text: str, stem: str, start: float, end: float,
         final = ctx.tmp(f"speech{spec.extension}")
         ffmpeg_adapter.encode_audio(wav, final, fmt)
     ctx.add_output(final, f"{stem}{spec.extension}", f"audio_{fmt}", {
-        "engine": "Kokoro-82M (kokoro-onnx, int8)",
+        "engine": tts_adapter.last_engine,
         "voice": voice,
         "speed": speed,
         "duration_seconds": round(duration, 2),

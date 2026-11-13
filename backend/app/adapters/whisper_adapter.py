@@ -45,6 +45,7 @@ class Transcript:
     duration: float
     model: str
     segments: List[Segment] = field(default_factory=list)
+    engine: str = ""                 # human-readable engine that actually produced the transcript
 
     @property
     def text(self) -> str:
@@ -105,6 +106,11 @@ class WhisperAdapter:
     ) -> Transcript:
         size = model_size or settings.WHISPER_DEFAULT_MODEL
         lang = None if language in (None, "", "auto") else language
+        cloud = self._transcribe_cloud(wav_path, lang)
+        if cloud is not None:
+            if progress:
+                progress(1.0)
+            return cloud
         with self._lock:  # one transcription at a time per process (CPU-bound)
             model = self._load(size)
             segments_iter, info = model.transcribe(
@@ -124,6 +130,44 @@ class WhisperAdapter:
             duration=duration,
             model=size,
             segments=segments,
+            engine=f"faster-whisper/{size} (on this server)",
+        )
+
+    @staticmethod
+    def _transcribe_cloud(wav_path: str, language: Optional[str]) -> Optional[Transcript]:
+        """Whisper large-v3-turbo on Cloudflare (seconds instead of minutes on a 0.1-CPU server).
+        Returns None so the caller falls back to local faster-whisper on any problem."""
+        from app.adapters.ai_provider import ai_provider
+
+        if not ai_provider.speech_enabled():
+            return None
+        import tempfile
+
+        from app.adapters.ffmpeg_adapter import ffmpeg_adapter
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="mtk-asr-") as tmp:
+                mp3 = os.path.join(tmp, "speech.mp3")       # ~8x smaller upload than 16 kHz WAV
+                ffmpeg_adapter.run_ffmpeg(["-i", wav_path, "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame",
+                                           "-b:a", "48k", mp3], mp3)
+                with open(mp3, "rb") as f:
+                    result = ai_provider.transcribe(f.read(), language)
+        except Exception as e:  # noqa: BLE001 - provider, quota, size or FFmpeg problem -> local model
+            logger.warning("Cloud transcription failed (%s); using local Whisper.", str(e)[:200])
+            return None
+        info = result.get("transcription_info") or {}
+        segments = [Segment(start=float(s.get("start") or 0), end=float(s.get("end") or 0), text=(s.get("text") or "").strip())
+                    for s in result.get("segments") or [] if (s.get("text") or "").strip()]
+        if not segments and (result.get("text") or "").strip():
+            dur = float(info.get("duration") or 0)
+            segments = [Segment(start=0.0, end=dur, text=result["text"].strip())]
+        return Transcript(
+            language=info.get("language") or (language or "en"),
+            language_probability=float(info.get("language_probability") or 0.0),
+            duration=float(info.get("duration") or (segments[-1].end if segments else 0.0)),
+            model="large-v3-turbo",
+            segments=segments,
+            engine="Whisper large-v3-turbo (Cloudflare Workers AI)",
         )
 
 

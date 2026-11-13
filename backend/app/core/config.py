@@ -119,6 +119,13 @@ class Settings(BaseSettings):
     CLOUDFLARE_CAPTION_MODEL: str = "@cf/llava-hf/llava-1.5-7b-hf"
     # SD 1.5 img2img is no longer granted to new accounts (403 code 5018); DreamShaper 8 LCM accepts image+strength.
     CLOUDFLARE_IMG2IMG_MODEL: str = "@cf/lykon/dreamshaper-8-lcm"
+    # Speech on Cloudflare's GPUs when AI_PROVIDER=cloudflare (Render Free has 0.1 CPU: local Kokoro takes
+    # ~25 s for one sentence). Local Kokoro / faster-whisper remain the automatic fallback.
+    CLOUD_SPEECH: bool = True
+    CLOUDFLARE_TTS_MODEL: str = "@cf/deepgram/aura-2-en"
+    CLOUDFLARE_TTS_FALLBACK_MODEL: str = "@cf/myshell-ai/melotts"   # deprecated by Cloudflare on 2026-11-20
+    CLOUDFLARE_ASR_MODEL: str = "@cf/openai/whisper-large-v3-turbo"
+    CLOUD_ASR_MAX_BYTES: int = 20_000_000
     # After a provider failure (5xx / 429 / network) AI modes show "temporarily unavailable" this long.
     AI_FAILURE_COOLDOWN_SECONDS: int = 180
     HF_API_TOKEN: str = ""

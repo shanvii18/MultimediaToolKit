@@ -407,3 +407,73 @@ def test_cloudflare_img2img_request_format(monkeypatch):
     monkeypatch.setattr(settings, "HF_API_TOKEN", "hf_x")
     with pytest.raises(AIProviderError, match="cloudflare"):
         ai_provider.transform_image(src.getvalue(), "watercolor")
+
+
+def _wav_bytes(seconds=0.5, rate=24000):
+    import wave as _w
+    buf = io.BytesIO()
+    with _w.open(buf, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+        w.writeframes(b"\x00\x10" * int(seconds * rate))
+    return buf.getvalue()
+
+
+@pytest.fixture
+def cf_speech(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "cloudflare")
+    monkeypatch.setattr(settings, "CLOUDFLARE_ACCOUNT_ID", "acc")
+    monkeypatch.setattr(settings, "CLOUDFLARE_API_TOKEN", "tok")
+    monkeypatch.setattr(settings, "CLOUD_SPEECH", True)
+    ai_provider._record_success()
+    calls = []
+
+    def install(handler):
+        def wrapped(request):
+            calls.append((request.url.path, json.loads(request.content or b"{}")))
+            return handler(request)
+        monkeypatch.setattr(ai_provider, "_transport", httpx.MockTransport(wrapped))
+    yield install, calls
+    ai_provider._record_success()
+
+
+def test_cloud_tts_uses_aura_and_reports_engine(cf_speech, tmp_path):
+    install, calls = cf_speech
+    install(lambda r: httpx.Response(200, content=_wav_bytes(), headers={"content-type": "audio/wav"}))
+    out = tmp_path / "s.wav"
+    seconds = tts_adapter.synthesize_to_wav("Hello there. How are you?", str(out), voice="bm_george")
+    assert 0.5 <= seconds < 1.0 and out.stat().st_size > 1000
+    assert calls[0][0].endswith("/ai/run/@cf/deepgram/aura-2-en")
+    assert calls[0][1]["speaker"] == "draco" and calls[0][1]["sample_rate"] == 24000
+    assert "Aura-2" in tts_adapter.last_engine
+
+
+def test_cloud_tts_falls_back_to_melotts_without_marking_ai_unavailable(cf_speech, tmp_path):
+    from app.engines.availability import engine_state
+    install, calls = cf_speech
+    melo = base64.b64encode(_wav_bytes(rate=44100)).decode()
+    install(lambda r: httpx.Response(429, text="limit") if "aura" in r.url.path
+            else httpx.Response(200, json={"result": {"audio": melo}}))
+    tts_adapter.synthesize_to_wav("Hello there.", str(tmp_path / "m.wav"))
+    assert "MeloTTS" in tts_adapter.last_engine
+    assert engine_state("ai_image") == ("available", None)          # speech failure did not poison AI status
+
+
+@needs_tts
+def test_cloud_tts_total_failure_falls_back_to_local_kokoro(cf_speech, tmp_path):
+    install, _ = cf_speech
+    install(lambda r: httpx.Response(503, text="down"))
+    seconds = tts_adapter.synthesize_to_wav("Hello there.", str(tmp_path / "k.wav"))
+    assert seconds > 0.3 and "Kokoro" in tts_adapter.last_engine
+
+
+def test_cloud_transcription_maps_segments(cf_speech, tmp_path):
+    from app.adapters.whisper_adapter import whisper_adapter
+    install, calls = cf_speech
+    install(lambda r: httpx.Response(200, json={"result": {
+        "text": "Hello world. Second line.", "transcription_info": {"language": "en", "language_probability": 0.98, "duration": 3.0},
+        "segments": [{"start": 0, "end": 1.4, "text": " Hello world."}, {"start": 1.5, "end": 3.0, "text": " Second line."}]}}))
+    wav = tmp_path / "in.wav"; wav.write_bytes(_wav_bytes(3.0, 16000))
+    t = whisper_adapter.transcribe(str(wav))
+    assert [s.text for s in t.segments] == ["Hello world.", "Second line."] and t.language == "en"
+    assert "Cloudflare" in t.engine and calls[0][0].endswith("/whisper-large-v3-turbo")
+    assert base64.b64decode(calls[0][1]["audio"])[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")   # sent as MP3
