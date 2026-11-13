@@ -71,6 +71,9 @@ services:
         value: "true"
       - key: JOB_MEMORY_LIMIT_MB
         value: "400"
+      # fork shares the API's loaded libraries with the job process (saves ~80 MB per job on 512 MB)
+      - key: JOB_START_METHOD
+        value: fork
       - key: MAX_VIDEO_SCENES
         value: "6"
       # Optional AI modes: set AI_PROVIDER=cloudflare (+ CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)
