@@ -398,8 +398,9 @@ def test_cloudflare_img2img_request_format(monkeypatch):
     Image.new("RGB", (1200, 800), "green").save(src, "PNG")
     out = ai_provider.transform_image(src.getvalue(), "watercolor", strength=0.5)
     assert Image.open(io.BytesIO(out)).size == (64, 64)
-    assert seen["url"].endswith("/accounts/acc/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img")
-    assert seen["body"]["prompt"] == "watercolor" and seen["body"]["strength"] == 0.5
+    assert seen["url"].endswith("/accounts/acc/ai/run/@cf/lykon/dreamshaper-8-lcm")
+    assert seen["body"]["prompt"] == "watercolor" and 0.1 <= seen["body"]["strength"] <= 0.5
+    assert seen["body"]["width"] % 8 == 0 and seen["body"]["height"] % 8 == 0
     sent = Image.open(io.BytesIO(bytes(seen["body"]["image"])))
     assert max(sent.size) <= 512                                      # downscaled before upload
     monkeypatch.setattr(settings, "AI_PROVIDER", "huggingface")
