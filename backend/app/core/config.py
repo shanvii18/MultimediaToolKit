@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     JOB_ISOLATION: bool = False
     # Watchdog limit for one job's process tree (MB, 0 = off). Render Free has 512 MB in total.
     JOB_MEMORY_LIMIT_MB: int = 400
+    # On Linux containers the watchdog instead watches the container's real working set (cgroup memory,
+    # the number the platform's OOM killer uses) and stops the job when it gets within this margin of
+    # the container limit. Summed process RSS double-counts shared libraries and stopped jobs that fit.
+    JOB_CONTAINER_MARGIN_MB: int = 40
+    JOB_CONTAINER_LIMIT_MB: int = 0                 # 0 = read the limit from the cgroup (memory.max)
 
     # ---- FFmpeg ----
     FFMPEG_TIMEOUT_SECONDS: int = 600

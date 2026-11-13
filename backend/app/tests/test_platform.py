@@ -155,3 +155,33 @@ def test_isolated_job_over_memory_limit_is_stopped_and_failed_cleanly():
     assert result["killed_for_memory"] is True
     job = _job(job_id)
     assert job.status == "failed" and job.error_code == "OUT_OF_MEMORY" and "memory" in job.error_message
+
+
+def test_container_memory_reads_cgroup_v2_working_set(monkeypatch):
+    from app.worker import isolated
+    files = {"/sys/fs/cgroup/memory.current": str(450 * 2**20), "/sys/fs/cgroup/memory.max": str(512 * 2**20),
+             "/sys/fs/cgroup/memory.stat": f"anon 1\ninactive_file {50 * 2**20}\nactive_file 3"}
+    monkeypatch.setattr(isolated, "_read", lambda p: files.get(p))
+    assert isolated.container_memory_mb() == (400.0, 512.0)          # file cache is not counted
+    files["/sys/fs/cgroup/memory.max"] = "max"                         # unlimited cgroup -> not used
+    assert isolated.container_memory_mb() is None
+
+
+def test_container_memory_cgroup_v1_and_absent(monkeypatch):
+    from app.worker import isolated
+    files = {"/sys/fs/cgroup/memory/memory.usage_in_bytes": str(300 * 2**20),
+             "/sys/fs/cgroup/memory/memory.limit_in_bytes": str(512 * 2**20),
+             "/sys/fs/cgroup/memory/memory.stat": f"total_inactive_file {20 * 2**20}"}
+    monkeypatch.setattr(isolated, "_read", lambda p: files.get(p))
+    assert isolated.container_memory_mb() == (280.0, 512.0)
+    monkeypatch.setattr(isolated, "_read", lambda p: None)
+    assert isolated.container_memory_mb() is None
+
+
+def test_isolated_job_is_stopped_when_container_nears_its_limit(monkeypatch):
+    from app.worker import isolated
+    monkeypatch.setattr(isolated, "container_memory_mb", lambda: (500.0, 512.0))   # 12 MB headroom < 40 margin
+    job_id = _queued_job()
+    result = isolated.run_job_isolated(job_id)
+    assert result["killed_for_memory"] is True
+    assert _job(job_id).error_code == "OUT_OF_MEMORY"
