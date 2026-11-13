@@ -31,7 +31,9 @@ KOKORO_VOICES = {
     "bm_daniel": "Daniel: British English, male",
 }
 SAMPLE_RATE = 24000
-_MAX_CHUNK_CHARS = 350
+# Kokoro's inference memory grows with chunk length (measured: 100 chars +90 MB, 200 +190 MB,
+# 400 +365 MB over the loaded model), so keep chunks short on small servers.
+_MAX_CHUNK_CHARS = 150
 
 
 def split_text(text: str, max_chars: int = _MAX_CHUNK_CHARS) -> List[str]:

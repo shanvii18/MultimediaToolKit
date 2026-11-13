@@ -31,6 +31,43 @@ def _child_main(job_id: str) -> None:  # pragma: no cover - runs in the child pr
     job_runner_service.process_job(job_id, already_claimed=True)
 
 
+def _read(path: str) -> str | None:
+    try:
+        with open(path, encoding="ascii") as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def _stat_value(text: str | None, key: str) -> int:
+    for line in (text or "").splitlines():
+        name, _, value = line.partition(" ")
+        if name == key and value.isdigit():
+            return int(value)
+    return 0
+
+
+def container_memory_mb() -> tuple[float, float] | None:
+    """(working set MB, limit MB) of this Linux container, or None when not in a limited cgroup.
+
+    Working set = usage minus reclaimable file cache, as Kubernetes/Docker count it for OOM decisions."""
+    usage = _read("/sys/fs/cgroup/memory.current")                      # cgroup v2
+    if usage is not None:
+        limit = _read("/sys/fs/cgroup/memory.max")
+        inactive = _stat_value(_read("/sys/fs/cgroup/memory.stat"), "inactive_file")
+    else:                                                                # cgroup v1
+        usage = _read("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+        limit = _read("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+        inactive = _stat_value(_read("/sys/fs/cgroup/memory/memory.stat"), "total_inactive_file")
+    if not usage or not usage.isdigit():
+        return None
+    limit_mb = settings.JOB_CONTAINER_LIMIT_MB or (
+        int(limit) / 2**20 if limit and limit.isdigit() and int(limit) < 2**50 else 0)
+    if not limit_mb:
+        return None
+    return max(0, int(usage) - inactive) / 2**20, float(limit_mb)
+
+
 def _tree_rss_mb(proc: psutil.Process) -> float:
     total = proc.memory_info().rss
     for child in proc.children(recursive=True):
@@ -68,24 +105,32 @@ def _mark_failed(job_id: str, code: str, message: str) -> None:
         db.close()
 
 
-def run_job_isolated(job_id: str, memory_limit_mb: int | None = None, poll_seconds: float = 0.25) -> dict:
+def run_job_isolated(job_id: str, memory_limit_mb: int | None = None, poll_seconds: float = 0.1) -> dict:
     """Execute ``job_id`` in a spawned child. Returns {"exitcode", "peak_mb", "killed_for_memory"}."""
     limit = settings.JOB_MEMORY_LIMIT_MB if memory_limit_mb is None else memory_limit_mb
     ctx = multiprocessing.get_context("spawn")      # never fork a multi-threaded server process
     child = ctx.Process(target=_child_main, args=(job_id,), name=f"mtk-job-{job_id[:8]}", daemon=True)
     child.start()
     peak, killed = 0.0, False
+    use_cgroup = bool(limit) and memory_limit_mb is None and container_memory_mb() is not None
     try:
         ps = psutil.Process(child.pid)
         while child.is_alive():
             try:
-                rss = _tree_rss_mb(ps)
+                if use_cgroup:
+                    used, cap = container_memory_mb() or (0.0, 0.0)
+                    over = cap and used > cap - settings.JOB_CONTAINER_MARGIN_MB
+                    what = f"container at {used:.0f} of {cap:.0f} MB"
+                else:
+                    used = _tree_rss_mb(ps)
+                    over = limit and used > limit
+                    what = f"{used:.0f} MB (limit {limit} MB)"
             except psutil.Error:
                 break
-            peak = max(peak, rss)
-            if limit and rss > limit:
+            peak = max(peak, used)
+            if over:
                 killed = True
-                logger.warning("Job %s used %.0f MB (limit %s MB); stopping it.", job_id, rss, limit)
+                logger.warning("Job %s stopped for memory: %s.", job_id, what)
                 _kill_tree(ps)
                 break
             child.join(poll_seconds)
