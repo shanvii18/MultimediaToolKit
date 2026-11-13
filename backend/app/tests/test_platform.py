@@ -185,3 +185,12 @@ def test_isolated_job_is_stopped_when_container_nears_its_limit(monkeypatch):
     result = isolated.run_job_isolated(job_id)
     assert result["killed_for_memory"] is True
     assert _job(job_id).error_code == "OUT_OF_MEMORY"
+
+
+def test_isolated_job_unknown_start_method_falls_back_to_spawn(monkeypatch):
+    from app.core.config import settings as cfg
+    from app.worker.isolated import run_job_isolated
+    monkeypatch.setattr(cfg, "JOB_START_METHOD", "no-such-method")
+    job_id = _queued_job()
+    assert run_job_isolated(job_id, memory_limit_mb=0)["exitcode"] == 0
+    assert _job(job_id).status == "succeeded"

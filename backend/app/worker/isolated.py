@@ -25,7 +25,12 @@ logger = logging.getLogger(__name__)
 TERMINAL = {"succeeded", "failed", "cancelled"}
 
 
-def _child_main(job_id: str) -> None:  # pragma: no cover - runs in the child process
+def _child_main(job_id: str, forked: bool = False) -> None:  # pragma: no cover - runs in the child
+    if forked:
+        # Never reuse the parent's pooled DB connections in a forked child (SQLAlchemy guidance).
+        from app.core.database import engine
+
+        engine.dispose(close=False)
     from app.services.job_runner_service import job_runner_service
 
     job_runner_service.process_job(job_id, already_claimed=True)
@@ -106,10 +111,15 @@ def _mark_failed(job_id: str, code: str, message: str) -> None:
 
 
 def run_job_isolated(job_id: str, memory_limit_mb: int | None = None, poll_seconds: float = 0.1) -> dict:
-    """Execute ``job_id`` in a spawned child. Returns {"exitcode", "peak_mb", "killed_for_memory"}."""
+    """Execute ``job_id`` in a child process. Returns {"exitcode", "peak_mb", "killed_for_memory"}."""
     limit = settings.JOB_MEMORY_LIMIT_MB if memory_limit_mb is None else memory_limit_mb
-    ctx = multiprocessing.get_context("spawn")      # never fork a multi-threaded server process
-    child = ctx.Process(target=_child_main, args=(job_id,), name=f"mtk-job-{job_id[:8]}", daemon=True)
+    # "spawn" (default) starts a clean interpreter, which re-imports every library (~80-90 MB extra).
+    # "fork" (Linux only, JOB_START_METHOD=fork) shares the parent's already-loaded pages copy-on-write,
+    # so a Kokoro job fits the 512 MB container. The child only runs the job; it opens fresh DB connections.
+    method = settings.JOB_START_METHOD if settings.JOB_START_METHOD in multiprocessing.get_all_start_methods() else "spawn"
+    ctx = multiprocessing.get_context(method)
+    child = ctx.Process(target=_child_main, args=(job_id, method == "fork"), name=f"mtk-job-{job_id[:8]}",
+                        daemon=True)
     child.start()
     peak, killed = 0.0, False
     use_cgroup = bool(limit) and memory_limit_mb is None and container_memory_mb() is not None
