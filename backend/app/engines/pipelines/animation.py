@@ -109,5 +109,5 @@ def animation_to_audio(ctx: JobContext) -> None:
         "engine": "Tesseract OCR", "preview_text": text[:2000],
     })
     speak_text(ctx, text, f"{stem}_read_aloud", 45, 98, {
-        "pipeline": "Frame sampling → Tesseract OCR → Kokoro TTS", "mode": "read_text", "source_asset_id": source.id,
+        "pipeline": "Frame sampling → Tesseract OCR → text-to-speech", "mode": "read_text", "source_asset_id": source.id,
     })

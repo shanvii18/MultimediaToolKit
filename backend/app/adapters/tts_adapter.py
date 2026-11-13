@@ -31,6 +31,12 @@ KOKORO_VOICES = {
     "bm_daniel": "Daniel: British English, male",
 }
 SAMPLE_RATE = 24000
+LOCAL_ENGINE = "Kokoro-82M (kokoro-onnx, int8, on this server)"
+# Closest Deepgram Aura-2 speaker for each Kokoro voice (used when speech runs on Cloudflare).
+AURA_SPEAKERS = {"af_heart": "luna", "af_bella": "thalia", "af_sarah": "athena", "am_michael": "orion",
+                 "am_adam": "arcas", "bf_emma": "pandora", "bf_isabella": "pandora", "bm_george": "draco",
+                 "bm_daniel": "draco"}
+_CLOUD_CHUNK_CHARS = 1000
 # Kokoro's inference memory grows with chunk length (measured: 100 chars +90 MB, 200 +190 MB,
 # 400 +365 MB over the loaded model), so keep chunks short on small servers.
 _MAX_CHUNK_CHARS = 150
@@ -64,6 +70,7 @@ def split_text(text: str, max_chars: int = _MAX_CHUNK_CHARS) -> List[str]:
 
 
 class KokoroTTSAdapter:
+    last_engine: str = LOCAL_ENGINE
     engine_name = "kokoro"
 
     def __init__(self):
@@ -145,11 +152,15 @@ class KokoroTTSAdapter:
 
         if voice not in KOKORO_VOICES:
             raise ValueError(f"Unknown voice '{voice}'.")
-        chunks = split_text(text)
-        if not chunks:
+        if not split_text(text):
             raise ValueError("There is no text to speak.")
-
         pause = np.zeros(int(SAMPLE_RATE * 0.12), dtype=np.float32)
+        parts = self._cloud_parts(text, voice, speed, pause, progress)
+        if parts is not None:
+            return self._write_wav(parts, output_wav)
+
+        self.last_engine = LOCAL_ENGINE
+        chunks = split_text(text)
         parts = []
         with self._lock:
             kokoro = self._load()
@@ -161,6 +172,47 @@ class KokoroTTSAdapter:
                 parts.extend([samples.astype(np.float32), pause])
                 if progress:
                     progress((i + 1) / len(chunks))
+
+        return self._write_wav(parts, output_wav)
+
+    def _cloud_parts(self, text, voice, speed, pause, progress):
+        """Synthesize on Cloudflare (fast GPU, no server RAM). Returns float32 parts, or None to use Kokoro."""
+        from app.adapters.ai_provider import ai_provider
+
+        if not ai_provider.speech_enabled():
+            return None
+        import tempfile
+
+        import numpy as np
+
+        from app.adapters.ffmpeg_adapter import ffmpeg_adapter
+
+        chunks = split_text(text, max_chars=_CLOUD_CHUNK_CHARS)
+        parts, engine = [], None
+        try:
+            with tempfile.TemporaryDirectory(prefix="mtk-tts-") as tmp:
+                for i, chunk in enumerate(chunks):
+                    wav, engine = ai_provider.speak_wav(chunk, AURA_SPEAKERS.get(voice, "luna"))
+                    raw, norm = os.path.join(tmp, f"{i}_raw.wav"), os.path.join(tmp, f"{i}.wav")
+                    with open(raw, "wb") as f:
+                        f.write(wav)
+                    tempo = ["-filter:a", f"atempo={min(2.0, max(0.5, float(speed))):.3f}"] if abs(float(speed) - 1) > 1e-3 else []
+                    ffmpeg_adapter.run_ffmpeg(["-i", raw, *tempo, "-ac", "1", "-ar", str(SAMPLE_RATE),
+                                               "-c:a", "pcm_s16le", norm], norm)
+                    with wave.open(norm, "rb") as w:
+                        samples = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float32) / 32768.0
+                    parts.extend([samples, pause])
+                    if progress:
+                        progress((i + 1) / len(chunks))
+        except Exception as e:  # noqa: BLE001 - any cloud problem (provider, quota, FFmpeg) -> local Kokoro
+            logger.warning("Cloud speech failed (%s); using local Kokoro.", str(e)[:200])
+            return None
+        self.last_engine = engine
+        return parts
+
+    @staticmethod
+    def _write_wav(parts, output_wav: str) -> float:
+        import numpy as np
 
         audio = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
         pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype("<i2")
