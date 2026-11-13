@@ -76,7 +76,12 @@ services:
         value: fork
       - key: MAX_VIDEO_SCENES
         value: "6"
-      # Optional AI modes: set AI_PROVIDER=cloudflare (+ CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)
-      # or AI_PROVIDER=huggingface (+ HF_API_TOKEN) in the dashboard. CPU modes work without it.
+      # AI modes run on Cloudflare Workers AI. The two credentials are secrets set in the dashboard
+      # (sync: false = Blueprint never overwrites them). A hard-coded "none" here once switched AI off
+      # on every Blueprint sync, so the provider is declared explicitly.
       - key: AI_PROVIDER
-        value: none
+        value: cloudflare
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
