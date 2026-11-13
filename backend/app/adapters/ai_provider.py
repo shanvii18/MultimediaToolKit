@@ -12,8 +12,11 @@ Providers:
   huggingface -> POST {HF_INFERENCE_BASE_URL}/{model}
 """
 import base64
+import io
 import logging
-from typing import Optional
+import threading
+import time
+from typing import Optional, Tuple
 
 import httpx
 
@@ -30,8 +33,54 @@ class AIProvider:
     engine_image = "ai_image"
     engine_caption = "ai_caption"
 
+    engine_img2img = "ai_img2img"
+
     def __init__(self, transport: Optional[httpx.BaseTransport] = None):
         self._transport = transport  # injectable for tests
+        self._issue: Optional[Tuple[float, str]] = None
+        self._lock = threading.Lock()
+
+    # ---- runtime health: a recent provider failure marks AI modes "temporarily unavailable" ----
+    def _record_failure(self, message: str) -> None:
+        with self._lock:
+            self._issue = (time.monotonic(), message)
+
+    def _record_success(self) -> None:
+        with self._lock:
+            self._issue = None
+
+    def runtime_issue(self) -> Optional[str]:
+        with self._lock:
+            if not self._issue:
+                return None
+            at, message = self._issue
+            if time.monotonic() - at > settings.AI_FAILURE_COOLDOWN_SECONDS:
+                self._issue = None
+                return None
+            return message
+
+    def img2img_availability(self) -> Optional[str]:
+        reason = self.availability()
+        if reason:
+            return reason
+        if self.provider != "cloudflare":
+            return ("AI restyle needs AI_PROVIDER=cloudflare (the free Hugging Face inference tier has no "
+                    "image-to-image model).")
+        return None
+
+    def _post(self, client: httpx.Client, url: str, what: str, **kwargs) -> httpx.Response:
+        try:
+            res = client.post(url, **kwargs)
+        except httpx.TimeoutException:
+            msg = f"{what} failed: the AI provider did not answer within {settings.AI_TIMEOUT_SECONDS} s."
+            self._record_failure(msg)
+            raise AIProviderError(msg)
+        except httpx.HTTPError:
+            msg = f"{what} failed: the AI provider could not be reached."
+            self._record_failure(msg)
+            raise AIProviderError(msg)
+        self._raise_for(res, what)
+        return res
 
     @property
     def provider(self) -> str:
@@ -55,15 +104,21 @@ class AIProvider:
     def _client(self) -> httpx.Client:
         return httpx.Client(timeout=settings.AI_TIMEOUT_SECONDS, transport=self._transport)
 
-    @staticmethod
-    def _raise_for(res: httpx.Response, what: str) -> None:
+    def _raise_for(self, res: httpx.Response, what: str) -> None:
         if res.status_code >= 400:
             detail = res.text[:300].replace("\n", " ")
             if res.status_code in (401, 403):
-                raise AIProviderError(f"{what} failed: the AI provider rejected the credentials ({res.status_code}).")
+                msg = f"{what} failed: the AI provider rejected the credentials ({res.status_code})."
+                self._record_failure(msg)
+                raise AIProviderError(msg)
             if res.status_code == 429:
-                raise AIProviderError(f"{what} failed: the AI provider's free allowance or rate limit was reached.")
-            raise AIProviderError(f"{what} failed: provider returned HTTP {res.status_code}: {detail}")
+                msg = f"{what} failed: the AI provider's free daily allowance or rate limit was reached."
+                self._record_failure(msg)
+                raise AIProviderError(msg)
+            msg = f"{what} failed: provider returned HTTP {res.status_code}: {detail}"
+            if res.status_code >= 500:
+                self._record_failure(msg)
+            raise AIProviderError(msg)
 
     # ---------------- text -> image ----------------
     def generate_image(self, prompt: str, width: int = 1024, height: int = 1024, steps: int = 4) -> bytes:
@@ -77,26 +132,25 @@ class AIProvider:
             if self.provider == "cloudflare":
                 url = (f"https://api.cloudflare.com/client/v4/accounts/{settings.CLOUDFLARE_ACCOUNT_ID}"
                        f"/ai/run/{settings.CLOUDFLARE_IMAGE_MODEL}")
-                res = client.post(url, headers={"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"},
-                                  json={"prompt": prompt, "steps": max(1, min(8, steps))})
-                self._raise_for(res, "Image generation")
+                res = self._post(client, url, "Image generation",
+                                 headers={"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"},
+                                 json={"prompt": prompt, "steps": max(1, min(8, steps))})
                 if res.headers.get("content-type", "").startswith("image/"):
-                    return res.content
+                    return self._valid_image(res.content, "Image generation")
                 data = res.json()
                 image_b64 = (data.get("result") or {}).get("image")
                 if not image_b64:
                     raise AIProviderError("Image generation failed: provider returned no image.")
-                return base64.b64decode(image_b64)
+                return self._valid_image(base64.b64decode(image_b64), "Image generation")
 
             url = f"{settings.HF_INFERENCE_BASE_URL.rstrip('/')}/{settings.HF_IMAGE_MODEL}"
-            res = client.post(url, headers={"Authorization": f"Bearer {settings.HF_API_TOKEN}",
-                                            "Accept": "image/png"},
-                              json={"inputs": prompt,
-                                    "parameters": {"width": width, "height": height, "num_inference_steps": steps}})
-            self._raise_for(res, "Image generation")
+            res = self._post(client, url, "Image generation",
+                             headers={"Authorization": f"Bearer {settings.HF_API_TOKEN}", "Accept": "image/png"},
+                             json={"inputs": prompt,
+                                   "parameters": {"width": width, "height": height, "num_inference_steps": steps}})
             if not res.headers.get("content-type", "").startswith("image/"):
                 raise AIProviderError("Image generation failed: provider did not return an image.")
-            return res.content
+            return self._valid_image(res.content, "Image generation")
 
     # ---------------- image -> description ----------------
     def describe_image(self, image_bytes: bytes,
@@ -108,23 +162,66 @@ class AIProvider:
             if self.provider == "cloudflare":
                 url = (f"https://api.cloudflare.com/client/v4/accounts/{settings.CLOUDFLARE_ACCOUNT_ID}"
                        f"/ai/run/{settings.CLOUDFLARE_CAPTION_MODEL}")
-                res = client.post(url, headers={"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"},
-                                  json={"image": list(image_bytes), "prompt": instruction, "max_tokens": 300})
-                self._raise_for(res, "Image description")
+                res = self._post(client, url, "Image description",
+                                 headers={"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"},
+                                 json={"image": list(image_bytes), "prompt": instruction, "max_tokens": 300})
                 text = ((res.json().get("result") or {}).get("description") or "").strip()
             else:
                 url = f"{settings.HF_INFERENCE_BASE_URL.rstrip('/')}/{settings.HF_CAPTION_MODEL}"
-                res = client.post(url, headers={"Authorization": f"Bearer {settings.HF_API_TOKEN}",
-                                                "Content-Type": "application/octet-stream"},
-                                  content=image_bytes)
-                self._raise_for(res, "Image description")
+                res = self._post(client, url, "Image description",
+                                 headers={"Authorization": f"Bearer {settings.HF_API_TOKEN}",
+                                          "Content-Type": "application/octet-stream"},
+                                 content=image_bytes)
                 data = res.json()
                 item = data[0] if isinstance(data, list) and data else data
                 text = (item.get("generated_text") if isinstance(item, dict) else "") or ""
                 text = text.strip()
         if not text:
             raise AIProviderError("Image description failed: provider returned no text.")
-        return text[0].upper() + text[1:] if text else text
+        self._record_success()
+        text = text[:1500]
+        return text[0].upper() + text[1:]
+
+    # ---------------- image -> image (restyle) ----------------
+    def transform_image(self, image_bytes: bytes, prompt: str, strength: float = 0.6) -> bytes:
+        """Restyle an image with a text prompt (Stable Diffusion 1.5 img2img on Cloudflare Workers AI)."""
+        reason = self.img2img_availability()
+        if reason:
+            raise AIProviderError(reason)
+        prompt = (prompt or "").strip()[:1000]
+        if not prompt:
+            raise AIProviderError("A style prompt is required.")
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img.thumbnail((512, 512))                       # SD 1.5 works at ~512 px; keeps the request small
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        url = (f"https://api.cloudflare.com/client/v4/accounts/{settings.CLOUDFLARE_ACCOUNT_ID}"
+               f"/ai/run/{settings.CLOUDFLARE_IMG2IMG_MODEL}")
+        with self._client() as client:
+            res = self._post(client, url, "AI restyle",
+                             headers={"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"},
+                             json={"prompt": prompt, "image": list(buf.getvalue()),
+                                   "strength": max(0.1, min(0.95, float(strength))), "num_steps": 20})
+        if res.headers.get("content-type", "").startswith("image/"):
+            return self._valid_image(res.content, "AI restyle")
+        image_b64 = ((res.json() or {}).get("result") or {}).get("image")
+        if not image_b64:
+            raise AIProviderError("AI restyle failed: provider returned no image.")
+        return self._valid_image(base64.b64decode(image_b64), "AI restyle")
+
+    def _valid_image(self, data: bytes, what: str) -> bytes:
+        """Reject empty/corrupt payloads so a broken provider answer is never saved as a 'result'."""
+        from PIL import Image
+
+        try:
+            with Image.open(io.BytesIO(data)) as im:
+                im.verify()
+        except Exception:
+            raise AIProviderError(f"{what} failed: the provider returned data that is not a valid image.")
+        self._record_success()
+        return data
 
 
 ai_provider = AIProvider()

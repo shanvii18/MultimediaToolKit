@@ -171,3 +171,35 @@ def test_set_password_cli_lets_an_existing_account_sign_in(monkeypatch):
     monkeypatch.setenv("MTK_NEW_PASSWORD", PASSWORD)
     assert cli._set_password(owner_email) == 0
     assert login(owner_email).status_code == 200
+
+
+def test_job_submission_is_idempotent_per_user():
+    token = signup(email()).json()["token"]
+    other = signup(email()).json()["token"]
+    body = {"tool": "text_to_image", "input_asset_ids": [], "params_json": {"mode": "poster", "text": "Hello"}}
+    h = {**bearer(token), "Idempotency-Key": "retry-key-123"}
+    first = client.post("/api/v1/jobs", json=body, headers=h)
+    second = client.post("/api/v1/jobs", json=body, headers=h)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]                     # no duplicate conversion
+    third = client.post("/api/v1/jobs", json=body, headers={**bearer(token), "Idempotency-Key": "another-key"})
+    assert third.json()["id"] != first.json()["id"]
+    # Keys are scoped per user: someone else's identical key never returns this user's job.
+    theirs = client.post("/api/v1/jobs", json=body, headers={**bearer(other), "Idempotency-Key": "retry-key-123"})
+    assert theirs.status_code == 200 and theirs.json()["id"] != first.json()["id"]
+
+
+def test_unhandled_errors_return_json_500_with_cors(monkeypatch):
+    from app.api.v1 import router as router_module
+    from app.core.config import settings as s
+    monkeypatch.setattr(s, "AUTH_MODE", "dev_open")
+
+    def boom(*a, **k):
+        raise RuntimeError("unexpected")
+    monkeypatch.setattr(router_module, "list_conversions", boom)
+    c = TestClient(app, raise_server_exceptions=False)
+    origin = (s.cors_origins or ["http://localhost:3000"])[0]
+    origin = "http://localhost:3000" if origin == "*" else origin
+    r = c.get("/api/v1/conversions", headers={"Origin": origin})
+    assert r.status_code == 500 and r.json()["error_code"] == "SERVER_ERROR"
+    assert r.headers.get("access-control-allow-origin") in (origin, "*")

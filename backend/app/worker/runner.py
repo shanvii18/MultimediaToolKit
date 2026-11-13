@@ -49,7 +49,12 @@ class JobWorker:
         beat = threading.Thread(target=self._heartbeat_loop, args=(job_id, beat_stop), daemon=True)
         beat.start()
         try:
-            job_runner_service.process_job(job_id, already_claimed=True)
+            if settings.JOB_ISOLATION:
+                # Separate process + memory watchdog: a heavy job can never take the API down.
+                from app.worker.isolated import run_job_isolated
+                run_job_isolated(job_id)
+            else:
+                job_runner_service.process_job(job_id, already_claimed=True)
         except Exception:  # process_job records failures itself; never let the loop die
             logger.exception("Unexpected error while processing job %s", job_id)
         finally:

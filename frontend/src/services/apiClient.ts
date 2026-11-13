@@ -45,28 +45,156 @@ function notifyUnauthorized(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("mtk:unauthorized"));
 }
 
-export class ApiClient {
-  private static async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${API_BASE}${endpoint}`;
-    const headers = {
-      ...authHeaders(),
-      ...options.headers,
-    };
+// ---------------------------------------------------------------------------
+// Backend reachability + error classification
+// ---------------------------------------------------------------------------
+/**
+ * online      - the last request reached the API
+ * waking      - the API is starting (Render Free sleeps when idle, or restarts); requests are retried
+ * unreachable - retries were exhausted without reaching the API
+ */
+export type BackendStatus = "checking" | "online" | "waking" | "unreachable";
 
-    const res = await fetch(url, { ...options, headers });
-    if (res.status === 401) notifyUnauthorized();
-    if (!res.ok) {
-      let errorMsg = `Request failed with status ${res.status}`;
-      try {
-        const errorJson = await res.json();
-        if (errorJson.detail) {
-          errorMsg = typeof errorJson.detail === "string" ? errorJson.detail : JSON.stringify(errorJson.detail);
-        }
-      } catch (_) {}
-      throw new Error(errorMsg);
+export type ApiErrorKind =
+  | "waking" // proxy answered 502/503/504 without an API body: server starting or restarting
+  | "network" // the request never reached the API (offline, DNS, server down, proxy error without CORS)
+  | "timeout" // no answer within the time limit
+  | "auth" // 401: not signed in / session expired
+  | "rate_limited" // 429
+  | "server" // 5xx answered by the API itself
+  | "client"; // other 4xx answered by the API (validation, not found...)
+
+export class ApiError extends Error {
+  kind: ApiErrorKind;
+  status?: number;
+  constructor(message: string, kind: ApiErrorKind, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.kind = kind;
+    this.status = status;
+  }
+  /** Transient problems that are safe to retry for idempotent requests. */
+  get transient(): boolean {
+    return this.kind === "waking" || this.kind === "network" || this.kind === "timeout";
+  }
+}
+
+let backendStatus: BackendStatus = "checking";
+function setBackendStatus(next: BackendStatus): void {
+  if (next === backendStatus) return;
+  backendStatus = next;
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("mtk:backend-status", { detail: next }));
+}
+export function getBackendStatus(): BackendStatus {
+  return backendStatus;
+}
+
+/** Human-readable message for any error thrown by ApiClient. */
+export function describeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.kind) {
+      case "waking":
+        return "The server is starting up (free hosting sleeps when idle). Please wait about a minute and try again.";
+      case "network":
+        return "Cannot reach the server right now. It may be restarting; please try again in a minute.";
+      case "timeout":
+        return "The server took too long to answer. Please try again.";
+      default:
+        return err.message;
     }
+  }
+  return (err as any)?.message || "Something went wrong.";
+}
+
+const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 20000]; // ~50 s in total: covers a Render cold start
+const DEFAULT_TIMEOUT_MS = 30000;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+interface RequestOpts extends RequestInit {
+  /** Retry transient failures with exponential backoff (default: GET/HEAD only). */
+  retry?: boolean;
+  timeoutMs?: number;
+}
+
+async function fetchOnce(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new ApiError("Request timed out.", "timeout");
+    throw new ApiError("Network error.", "network");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function toApiError(res: Response): Promise<ApiError> {
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  let detail = "";
+  if (isJson) {
+    try {
+      const body = await res.json();
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body);
+    } catch (_) {}
+  }
+  if (res.status === 401) return new ApiError(detail || "Please sign in to continue.", "auth", 401);
+  if (res.status === 429) return new ApiError(detail || "Too many requests. Please wait a moment.", "rate_limited", 429);
+  if ([502, 503, 504].includes(res.status) && !isJson) return new ApiError("Server is starting.", "waking", res.status);
+  if (res.status >= 500) return new ApiError(detail || `Server error (${res.status}).`, "server", res.status);
+  return new ApiError(detail || `Request failed (${res.status}).`, "client", res.status);
+}
+
+async function sendWithRetry(url: string, init: RequestInit, retry: boolean, timeoutMs: number): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetchOnce(url, init, timeoutMs);
+      if (res.ok) {
+        setBackendStatus("online");
+        return res;
+      }
+      const err = await toApiError(res);
+      if (err.kind !== "waking") setBackendStatus("online"); // the API itself answered
+      throw err;
+    } catch (e) {
+      const err = e instanceof ApiError ? e : new ApiError("Network error.", "network");
+      if (err.kind === "auth") notifyUnauthorized();
+      if (!retry || !err.transient || attempt >= RETRY_DELAYS_MS.length) {
+        if (err.transient) setBackendStatus("unreachable");
+        throw err;
+      }
+      setBackendStatus("waking");
+      await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
+function newIdempotencyKey(): string {
+  try {
+    return crypto.randomUUID();
+  } catch (_) {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+export class ApiClient {
+  private static async request<T>(endpoint: string, options: RequestOpts = {}): Promise<T> {
+    const { retry, timeoutMs, ...init } = options;
+    const method = (init.method || "GET").toUpperCase();
+    const headers = { ...authHeaders(), ...((init.headers as Record<string, string>) || {}) };
+    const res = await sendWithRetry(
+      `${API_BASE}${endpoint}`,
+      { ...init, headers },
+      retry ?? (method === "GET" || method === "HEAD"),
+      timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
     if (res.status === 204) return undefined as T;
     return res.json() as Promise<T>;
+  }
+
+  /** Resolves once the API answers /health (waits through a cold start); throws ApiError otherwise. */
+  static async waitForBackend(): Promise<void> {
+    await this.request<{ status: string }>("/health", { retry: true, timeoutMs: 20000 });
   }
 
   // Accounts: public email + password sign-up / sign-in
@@ -116,8 +244,8 @@ export class ApiClient {
   }
 
   // Health
-  static async getHealth(): Promise<{ status: string }> {
-    return this.request<{ status: string }>("/health");
+  static async getHealth(retry = false): Promise<{ status: string }> {
+    return this.request<{ status: string }>("/health", { retry, timeoutMs: 20000 });
   }
 
   // Projects
@@ -153,18 +281,11 @@ export class ApiClient {
       formData.append("project_id", projectId);
     }
 
-    const res = await fetch(`${API_BASE}/api/v1/media`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: formData,
-    });
-
-    if (res.status === 401) notifyUnauthorized();
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Upload failed");
-    }
-
+    // Make sure a sleeping server is awake first; the upload itself is not retried blindly
+    // (a retry after a lost response would store the file twice).
+    await this.waitForBackend();
+    const res = await sendWithRetry(`${API_BASE}/api/v1/media`, { method: "POST", headers: authHeaders(), body: formData },
+      false, 300000);
     return res.json() as Promise<Asset>;
   }
 
@@ -196,9 +317,12 @@ export class ApiClient {
   }
 
   static async createJob(tool: string, inputAssetIds: string[] = [], paramsJson: Record<string, any> = {}, projectId?: string): Promise<Job> {
+    await this.waitForBackend();
+    // The same Idempotency-Key on every retry: the server returns the first job, never a duplicate.
     return this.request<Job>("/api/v1/jobs", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      retry: true,
+      headers: { "Content-Type": "application/json", "Idempotency-Key": newIdempotencyKey() },
       body: JSON.stringify({
         tool,
         input_asset_ids: inputAssetIds,

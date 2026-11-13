@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2, LogIn, Sparkles, UserPlus } from "lucide-react";
-import { ApiClient, Me } from "@/services/apiClient";
+import { ApiClient, Me, describeError } from "@/services/apiClient";
 
 type Mode = "signin" | "signup";
 
@@ -60,12 +60,7 @@ export default function LoginPage() {
       window.dispatchEvent(new CustomEvent("mtk:signed-in"));
       router.push("/convert");
     } catch (err: any) {
-      const msg: string = err?.message || "";
-      setError(
-        msg.startsWith("Request failed") || msg === "Failed to fetch"
-          ? "The server is waking up (free hosting). Please try again in a minute."
-          : msg,
-      );
+      setError(describeError(err));
     } finally {
       setBusy(false);
     }

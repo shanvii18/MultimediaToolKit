@@ -144,7 +144,7 @@ def test_fresh_database_is_migrated_to_head(tmp_path):
     assert {"users", "jobs", "assets", "access_keys", "job_leases", "alembic_version"} <= _tables(db)
     assert "progress_message" in _columns(db, "jobs")
     con = sqlite3.connect(db)
-    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0003_session_expiry"
+    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0004_job_idempotency_key"
     con.close()
 
 

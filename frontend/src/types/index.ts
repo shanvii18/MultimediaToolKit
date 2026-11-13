@@ -25,7 +25,17 @@ export interface ToolkitModule {
 }
 
 export type MediaFormat = "text" | "image" | "audio" | "video" | "animation";
-export type ConversionStatus = "available" | "unavailable" | "coming_soon";
+/**
+ * available               - real pipeline configured on this server
+ * temporarily_unavailable - configured, but the AI provider failed recently (can be retried)
+ * needs_config            - AI provider credentials are missing on the server
+ * unavailable             - a required local engine is not installed
+ * coming_soon             - genuinely not implemented
+ */
+export type ConversionStatus = "available" | "temporarily_unavailable" | "needs_config" | "unavailable" | "coming_soon";
+
+/** ai_provider = hosted AI model; ai_local = neural model on the server CPU; cpu = deterministic processing */
+export type ModeKind = "ai_provider" | "ai_local" | "cpu";
 
 export interface ConversionParam {
   name: string;
@@ -48,6 +58,7 @@ export interface ConversionMode {
   status: ConversionStatus;
   reason: string | null;
   engines: string[];
+  kind: ModeKind;
 }
 
 export interface Conversion {

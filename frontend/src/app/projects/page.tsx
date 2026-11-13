@@ -12,7 +12,7 @@ import {
   Trash2,
   Search,
 } from "lucide-react";
-import { ApiClient } from "@/services/apiClient";
+import { ApiClient, describeError } from "@/services/apiClient";
 import { Project, Asset } from "@/types";
 
 export default function ProjectsPage() {
@@ -53,7 +53,7 @@ export default function ProjectsPage() {
       await ApiClient.deleteAsset(id);
       setAssets((list) => list.filter((a) => a.id !== id));
     } catch (err: any) {
-      setLibError(err.message || "Could not delete the file.");
+      setLibError(describeError(err));
     } finally {
       setConfirmId(null);
     }

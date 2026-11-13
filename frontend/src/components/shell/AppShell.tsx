@@ -23,7 +23,7 @@ import {
   LogOut,
   KeyRound,
 } from "lucide-react";
-import { ApiClient, API_BASE, Me } from "@/services/apiClient";
+import { ApiClient, API_BASE, BackendStatus, Me, getBackendStatus } from "@/services/apiClient";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -44,7 +44,7 @@ export function AppShell({ children }: AppShellProps) {
   const [theme, setTheme] = useState<Theme>("dark");
   const [me, setMe] = useState<Me | null>(null);
   const [needsSignIn, setNeedsSignIn] = useState(false);
-  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>("checking");
 
   const loadMe = useCallback(() => {
     ApiClient.getMe()
@@ -58,17 +58,34 @@ export function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     setTheme(currentTheme());
     let isMounted = true;
-    ApiClient.getHealth()
-      .then((res) => isMounted && setBackendStatus(res.status === "ok" ? "online" : "offline"))
-      .catch(() => isMounted && setBackendStatus("offline"));
-    loadMe();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Every API call reports reachability (see apiClient); this keeps the badge truthful between calls.
+    // Online: re-check every 60 s. Not reachable: keep probing every 10 s until the server is back.
+    const probe = () => {
+      ApiClient.getHealth()
+        .catch(() => undefined)
+        .finally(() => {
+          if (!isMounted) return;
+          timer = setTimeout(probe, getBackendStatus() === "online" ? 60000 : 10000);
+        });
+    };
+    ApiClient.getHealth(true)
+      .then(() => loadMe())
+      .catch(() => undefined)
+      .finally(() => {
+        if (isMounted) timer = setTimeout(probe, getBackendStatus() === "online" ? 60000 : 10000);
+      });
 
+    const onStatus = (e: Event) => setBackendStatus((e as CustomEvent<BackendStatus>).detail);
     const onUnauthorized = () => setNeedsSignIn(true);
     const onSignedIn = () => loadMe();
+    window.addEventListener("mtk:backend-status", onStatus);
     window.addEventListener("mtk:unauthorized", onUnauthorized);
     window.addEventListener("mtk:signed-in", onSignedIn);
     return () => {
       isMounted = false;
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("mtk:backend-status", onStatus);
       window.removeEventListener("mtk:unauthorized", onUnauthorized);
       window.removeEventListener("mtk:signed-in", onSignedIn);
     };
@@ -166,9 +183,9 @@ export function AppShell({ children }: AppShellProps) {
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs ${
               backendStatus === "online"
                 ? "bg-emerald-950/40 text-emerald-400 border border-emerald-800/50"
-                : backendStatus === "checking"
-                ? "bg-amber-950/40 text-amber-400 border border-amber-800/50"
-                : "bg-rose-950/40 text-rose-400 border border-rose-800/50"
+                : backendStatus === "unreachable"
+                ? "bg-rose-950/40 text-rose-400 border border-rose-800/50"
+                : "bg-amber-950/40 text-amber-400 border border-amber-800/50"
             }`}
           >
             <Server className="h-3.5 w-3.5 shrink-0" />
@@ -176,7 +193,13 @@ export function AppShell({ children }: AppShellProps) {
               <div className="flex-1 flex items-center justify-between">
                 <span>Processing API</span>
                 <span className="font-mono text-[10px] uppercase font-semibold">
-                  {backendStatus === "online" ? "● Online" : backendStatus === "checking" ? "Checking" : "Offline"}
+                  {backendStatus === "online"
+                    ? "● Online"
+                    : backendStatus === "waking"
+                    ? "Waking up…"
+                    : backendStatus === "checking"
+                    ? "Checking"
+                    : "Unreachable"}
                 </span>
               </div>
             )}

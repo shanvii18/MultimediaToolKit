@@ -21,3 +21,4 @@ numpy>=1.26
 # Development / tests
 pytest>=8.0.0
 moto[s3]>=5.0,<6.0              # in-process S3 fake for storage tests
+psutil==7.2.2

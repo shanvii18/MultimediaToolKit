@@ -92,7 +92,7 @@ Tested against https://mtk-backend.onrender.com from outside, using the real own
 ## Pending / needs owner approval
 
 - [x] PR #1 merged; live verification done (above). Owner invite key created (kept privately).
-- [ ] Merge the OOM fix (`5f1f889`) to `main` and re-test text_to_video live.
+- [x] OOM fix merged and text_to_video verified live.
 - [ ] Old Render database: nothing to do. Render deletes it automatically on 2026-11-09, and the verified backup is kept.
 
 ## Rollback
@@ -100,3 +100,20 @@ Tested against https://mtk-backend.onrender.com from outside, using the real own
 - **Backend**: in Render, redeploy the previous deploy (commit `57bc6d4`). The previous environment values
   are saved privately. The old database remains available until 2026-11-09.
 - **Database**: Neon keeps the migrated copy. The verified dump can be restored again at any time.
+
+## Final state (2026-11-06)
+
+- **OOM fix merged** (PR #2, `b0d5e8e`): text_to_video now succeeds live (60 s), with no `oomKilled` event since.
+  Re-verified live after the fix: text_to_audio, audio_to_text, video_to_text, animation_to_text, image_to_audio,
+  audio_to_video and image_to_video. Together with the earlier run, **all 20 conversions have succeeded live with
+  downloadable output**.
+- **Public accounts merged** (`9e701f0`), replacing invite-only. Migration `0003_session_expiry` applied on Neon.
+  Live check with a brand-new account:
+  - Sign-up returned 201, a duplicate sign-up 409, and a wrong password 401. Sign-in returned 200.
+  - The new account started with no jobs or files.
+  - An image upload and image→text (OCR) plus text→audio conversions succeeded, and the outputs downloaded.
+  - The owner could not see the new user's file (404), and the new user could not see the owner's files.
+  - After logout the session was rejected (401), and requests without a token were rejected (401).
+  - The live login page offers "Create account" and does not mention invites.
+- The owner account and its data are intact. The owner signs in with email and password (stored privately).
+- The old Render database expires automatically on 2026-11-09, and the verified backup is kept on D:.

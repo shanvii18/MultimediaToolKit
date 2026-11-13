@@ -179,11 +179,15 @@ def test_catalogue_lists_exactly_20_conversions_with_honest_status():
     assert len(items) == 20 and set(items) == set(CONVERSION_IDS)
     assert {c["source"] for c in items.values()} == {"text", "image", "audio", "video", "animation"}
     for cid, item in items.items():
-        assert item["status"] in ("available", "unavailable"), cid
+        assert item["status"] in ("available", "unavailable", "needs_config"), cid
         for m in item["modes"]:
-            assert m["status"] in ("available", "unavailable"), (cid, m["id"])
-            if m["status"] == "unavailable":
+            assert m["status"] in ("available", "unavailable", "needs_config", "coming_soon"), (cid, m["id"])
+            assert m["kind"] in ("ai_provider", "ai_local", "cpu"), (cid, m["id"])
+            if m["status"] in ("unavailable", "needs_config"):
                 assert m["reason"], (cid, m["id"])
+            if m["kind"] == "ai_provider" and m["status"] != "coming_soon":
+                # never claimed available without a configured provider (tests run with AI_PROVIDER=none)
+                assert m["status"] == "needs_config", (cid, m["id"])
 
 
 def test_catalogue_is_public_even_in_access_key_mode(monkeypatch):
