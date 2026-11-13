@@ -111,7 +111,8 @@ class Settings(BaseSettings):
     CLOUDFLARE_API_TOKEN: str = ""
     CLOUDFLARE_IMAGE_MODEL: str = "@cf/black-forest-labs/flux-1-schnell"
     CLOUDFLARE_CAPTION_MODEL: str = "@cf/llava-hf/llava-1.5-7b-hf"
-    CLOUDFLARE_IMG2IMG_MODEL: str = "@cf/runwayml/stable-diffusion-v1-5-img2img"
+    # SD 1.5 img2img is no longer granted to new accounts (403 code 5018); DreamShaper 8 LCM accepts image+strength.
+    CLOUDFLARE_IMG2IMG_MODEL: str = "@cf/lykon/dreamshaper-8-lcm"
     # After a provider failure (5xx / 429 / network) AI modes show "temporarily unavailable" this long.
     AI_FAILURE_COOLDOWN_SECONDS: int = 180
     HF_API_TOKEN: str = ""

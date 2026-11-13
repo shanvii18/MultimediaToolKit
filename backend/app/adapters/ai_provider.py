@@ -184,7 +184,7 @@ class AIProvider:
 
     # ---------------- image -> image (restyle) ----------------
     def transform_image(self, image_bytes: bytes, prompt: str, strength: float = 0.6) -> bytes:
-        """Restyle an image with a text prompt (Stable Diffusion 1.5 img2img on Cloudflare Workers AI)."""
+        """Restyle an image with a text prompt (img2img, DreamShaper 8 LCM on Cloudflare Workers AI)."""
         reason = self.img2img_availability()
         if reason:
             raise AIProviderError(reason)
@@ -196,14 +196,22 @@ class AIProvider:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img.thumbnail((512, 512))                       # SD 1.5 works at ~512 px; keeps the request small
         buf = io.BytesIO()
+        if min(img.size) < 256:                         # model minimum; upscale keeping the aspect ratio
+            k = 256 / min(img.size)
+            img = img.resize((round(img.width * k), round(img.height * k)))
+        img = img.resize((img.width // 8 * 8, img.height // 8 * 8))  # model needs sizes divisible by 8
         img.save(buf, "PNG")
+        # The UI slider is 0.2-0.9; this model already repaints heavily at 0.5, so map it to 0.1-0.5
+        # (measured: 0.3 keeps the composition, 0.9 ignores the source entirely).
+        s = max(0.2, min(0.9, float(strength)))
+        effective = round(0.1 + (s - 0.2) * (0.4 / 0.7), 3)
         url = (f"https://api.cloudflare.com/client/v4/accounts/{settings.CLOUDFLARE_ACCOUNT_ID}"
                f"/ai/run/{settings.CLOUDFLARE_IMG2IMG_MODEL}")
         with self._client() as client:
             res = self._post(client, url, "AI restyle",
                              headers={"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}"},
-                             json={"prompt": prompt, "image": list(buf.getvalue()),
-                                   "strength": max(0.1, min(0.95, float(strength))), "num_steps": 20})
+                             json={"prompt": prompt, "image": list(buf.getvalue()), "strength": effective,
+                                   "width": img.width, "height": img.height, "num_steps": 20})
         if res.headers.get("content-type", "").startswith("image/"):
             return self._valid_image(res.content, "AI restyle")
         image_b64 = ((res.json() or {}).get("result") or {}).get("image")
