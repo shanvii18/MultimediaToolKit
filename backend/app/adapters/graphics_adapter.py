@@ -38,8 +38,8 @@ def gradient(size: Tuple[int, int], top, bottom, angle_mix: float = 0.35):
     from PIL import Image
 
     w, h = size
-    y = np.linspace(0, 1, h)[:, None]
-    x = np.linspace(0, 1, w)[None, :]
+    y = np.linspace(0, 1, h, dtype=np.float32)[:, None]
+    x = np.linspace(0, 1, w, dtype=np.float32)[None, :]
     t = np.clip(y * (1 - angle_mix) + x * angle_mix, 0, 1)[..., None]
     top_c = np.array(top, dtype=np.float32)
     bottom_c = np.array(bottom, dtype=np.float32)

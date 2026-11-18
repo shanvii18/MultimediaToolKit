@@ -67,7 +67,10 @@ class Settings(BaseSettings):
     # the number the platform's OOM killer uses) and stops the job when it gets within this margin of
     # the container limit. Summed process RSS double-counts shared libraries and stopped jobs that fit.
     JOB_CONTAINER_MARGIN_MB: int = 40
-    JOB_START_METHOD: str = "spawn"                # "fork" on Linux shares loaded libraries (saves ~80 MB/job)
+    JOB_START_METHOD: str = "spawn"
+    # Small servers (Render Free = 0.1 CPU, where 1 CPU-second takes ~10 s): x264 ultrafast, videos at 75%
+    # size / 20 fps, fast PNG compression. Output stays sharp enough for the web; jobs finish several x faster.
+    FAST_MEDIA: bool = False                # "fork" on Linux shares loaded libraries (saves ~80 MB/job)
     JOB_CONTAINER_LIMIT_MB: int = 0                 # 0 = read the limit from the cgroup (memory.max)
 
     # ---- FFmpeg ----

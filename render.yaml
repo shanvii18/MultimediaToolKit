@@ -76,6 +76,9 @@ services:
         value: fork
       - key: MAX_VIDEO_SCENES
         value: "6"
+      # 0.1 CPU: x264 ultrafast, video at 75% size / 20 fps, fast PNG compression (several x faster jobs)
+      - key: FAST_MEDIA
+        value: "true"
       # AI modes run on Cloudflare Workers AI. The two credentials are secrets set in the dashboard
       # (sync: false = Blueprint never overwrites them). A hard-coded "none" here once switched AI off
       # on every Blueprint sync, so the provider is declared explicitly.

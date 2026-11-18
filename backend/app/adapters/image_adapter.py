@@ -70,7 +70,12 @@ def apply_edits(img, edits: FrameEdits):
 
 def save_image(img, path: str, fmt: str) -> None:
     _, pil_format = OUTPUT_IMAGE_FORMATS[fmt]
-    options = {"quality": 92} if pil_format in ("JPEG", "WEBP") else {"optimize": True}
+    from app.core.config import settings
+
+    if pil_format in ("JPEG", "WEBP"):
+        options = {"quality": 92}
+    else:  # optimize=True runs zlib at maximum effort (~0.17 CPU-s per 1080p image, ~2 s on Render Free)
+        options = {"compress_level": 1} if settings.FAST_MEDIA else {"optimize": True}
     img.convert("RGB").save(path, pil_format, **options)
 
 

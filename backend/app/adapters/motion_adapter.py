@@ -6,6 +6,7 @@ import os
 from typing import List, Optional, Sequence, Tuple
 
 from app.adapters.ffmpeg_adapter import ffmpeg_adapter
+from app.core.config import settings
 
 SIZES = {
     "landscape": (1280, 720),
@@ -14,6 +15,20 @@ SIZES = {
 }
 ANIMATION_SIZES = {"square": (480, 480), "landscape": (640, 360), "portrait": (360, 640)}
 VIDEO_ENCODE = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
+FAST_VIDEO_ENCODE = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "25",
+                     "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
+
+
+def video_encode() -> List[str]:
+    return FAST_VIDEO_ENCODE if settings.FAST_MEDIA else VIDEO_ENCODE
+
+
+def fast_size(size: Tuple[int, int], fps: int) -> Tuple[Tuple[int, int], int]:
+    """FAST_MEDIA: render video at 75% size (even dimensions) and at most 20 fps."""
+    if not settings.FAST_MEDIA:
+        return size, fps
+    w, h = size
+    return (max(2, int(w * 0.75) // 2 * 2), max(2, int(h * 0.75) // 2 * 2)), min(fps, 20)
 
 
 def _zoompan(motion: str, frames: int, size: Tuple[int, int], fps: int) -> str:
@@ -34,11 +49,12 @@ def _zoompan(motion: str, frames: int, size: Tuple[int, int], fps: int) -> str:
 
 def ken_burns(image_path: str, out_path: str, seconds: float, size=(1280, 720), fps: int = 25,
               motion: str = "zoom_in", audio_path: Optional[str] = None) -> None:
+    size, fps = fast_size(size, fps)
     frames = max(2, int(round(seconds * fps)))
     args = ["-i", image_path]
     if audio_path:
         args += ["-i", audio_path]
-    args += ["-vf", _zoompan(motion, frames, size, fps), "-frames:v", str(frames), *VIDEO_ENCODE]
+    args += ["-vf", _zoompan(motion, frames, size, fps), "-frames:v", str(frames), *video_encode()]
     if audio_path:
         args += ["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "160k", "-af", "apad", "-t", f"{seconds:.3f}"]
     else:
@@ -78,6 +94,7 @@ VISUALIZERS = {
 def visualizer_video(audio_path: str, background_path: str, out_path: str, style: str = "waves",
                      size=(1280, 720), fps: int = 25, max_seconds: Optional[float] = None) -> None:
     """Audio-reactive visualiser blended (screen mode) over a still background, with the original audio."""
+    size, fps = fast_size(size, fps)
     w, h = size
     # Render the visualiser at half resolution and upscale: ~4x less memory/CPU (small servers).
     vw, vh = max(2, (w // 2) // 2 * 2), max(2, (h // 2) // 2 * 2)
@@ -90,7 +107,7 @@ def visualizer_video(audio_path: str, background_path: str, out_path: str, style
     length = min(max_seconds or 1e9, media_duration(audio_path) or 600.0)
     args = ["-i", audio_path, "-loop", "1", "-t", f"{length + 1:.3f}", "-i", background_path,
             "-filter_complex", graph,
-            "-map", "[out]", "-map", "0:a", *VIDEO_ENCODE, "-c:a", "aac", "-b:a", "192k",
+            "-map", "[out]", "-map", "0:a", *video_encode(), "-c:a", "aac", "-b:a", "192k",
             "-t", f"{length:.3f}", out_path]
     ffmpeg_adapter.run_ffmpeg(args, out_path, error_hint="Make sure the file contains an audio track.")
 
@@ -154,7 +171,7 @@ def frames_to_video(pattern: str, fps: float, out_path: str, fmt: str = "mp4", l
         chain.append(f"tpad=stop_mode=clone:stop_duration={2.0 / fps:.4f}")
         chain.append("minterpolate=fps=30:mi_mode=blend")
     chain.append("format=yuv420p")
-    codec = ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "34", "-row-mt", "1"] if fmt == "webm" else VIDEO_ENCODE
+    codec = ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "34", "-row-mt", "1"] if fmt == "webm" else video_encode()
     ffmpeg_adapter.run_ffmpeg(["-framerate", f"{fps:.4f}", "-i", pattern, "-vf", ",".join(chain), *codec,
                                "-t", f"{total:.3f}", "-an", out_path], out_path, error_hint="Could not render the video.")
 
